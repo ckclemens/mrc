@@ -21,7 +21,15 @@ done
 
 sudo /usr/local/bin/init-firewall.sh
 
-echo "API key: ${ANTHROPIC_API_KEY:+set (${#ANTHROPIC_API_KEY} chars)}"
+# Ensure the symlink target for .claude.json exists in the persistent volume
+CONFIG_TARGET="$HOME/.claude/claude.json"
+if [ ! -f "$CONFIG_TARGET" ]; then
+  LATEST_BACKUP=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1)
+  if [ -n "$LATEST_BACKUP" ]; then
+    echo "Restoring Claude config from backup..."
+    cp "$LATEST_BACKUP" "$CONFIG_TARGET"
+  fi
+fi
 
 # Skip onboarding prompt when API key is provided
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then

@@ -157,6 +157,12 @@ if [[ -f "$IGNORE_FILE" ]]; then
     # Strip trailing slash for consistency
     line="${line%/}"
 
+    # Reject absolute paths and path traversal attempts
+    if [[ "$line" == /* ]] || [[ "$line" == *..* ]]; then
+      echo "  → Ignored:   $line (absolute or traversal paths not allowed)" >&2
+      continue
+    fi
+
     HOST_PATH="$REPO_PATH/$line"
     CONTAINER_PATH="/workspace/$line"
 
@@ -197,7 +203,7 @@ fi
 echo "  → Firewall:  jammed (just like their radar)"
 echo ""
 
-docker run --rm -it \
+docker run --rm -it --init \
   --cap-add=NET_ADMIN \
   --cap-add=NET_RAW \
   ${ENV_FLAGS[@]+"${ENV_FLAGS[@]}"} \
