@@ -4,12 +4,16 @@
 # Launch Claude Code in a sandboxed Docker container with network firewall.
 #
 # Usage:
-#   mrc [path-to-repo] [-- claude-code-args...]
+#   mrc [options] [path-to-repo] [-- claude-code-args...]
+#
+# Options:
+#   -v, --verbose  Show Colima and Docker output (useful for debugging)
 #
 # Examples:
 #   mrc ~/projects/myapp
 #   mrc ~/projects/myapp -- --model claude-sonnet-4-5-20250929
 #   mrc .                 -- -p "fix the failing tests"
+#   mrc -v ~/projects/myapp
 #
 # Hidden directories:
 #   Create a .sandboxignore file in your repo root listing paths to hide
@@ -24,6 +28,30 @@
 
 set -euo pipefail
 
+# --- Spaceballs Quotes (Master Yogurt's wisdom for the waiting) ---
+YOGURT_QUOTES=(
+  "Moichandising! Moichandising! ...where the real money from the movie is made."
+  "May the Schwartz be with you."
+  "I am Yogurt. The one and only."
+  "Use the Schwartz, coder!"
+  "God willing, we'll all meet again in Spaceballs 2: The Search for More Money."
+  "I hate yogurt. Even with strawberries."
+  "The ring! I can't believe you fell for the oldest trick in the book!"
+)
+
+spinner() {
+  local pid=$1
+  local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+  local quote="${YOGURT_QUOTES[$((RANDOM % ${#YOGURT_QUOTES[@]}))]}"
+  local i=0
+  while kill -0 "$pid" 2>/dev/null; do
+    printf "\r  %s %s" "${frames[$((i % ${#frames[@]}))]}" "$quote"
+    sleep 0.1
+    ((i++))
+  done
+  printf "\r%*s\r" $((${#quote} + 6)) ""   # clear the line
+}
+
 # Resolve symlinks to find the real script directory (portable, works on macOS)
 SOURCE="$0"
 while [ -L "$SOURCE" ]; do
@@ -33,6 +61,24 @@ while [ -L "$SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
 IMAGE_NAME="mister-claude"
+
+# Parse flags
+VERBOSE=false
+args=()
+for arg in "$@"; do
+  case "$arg" in
+    --verbose|-v) VERBOSE=true ;;
+    *) args+=("$arg") ;;
+  esac
+done
+set -- "${args[@]+"${args[@]}"}"
+
+# Redirect target for noisy commands
+if $VERBOSE; then
+  QUIET="/dev/stderr"
+else
+  QUIET="/dev/null"
+fi
 
 # Parse repo path (default: current directory)
 REPO_PATH="${1:-.}"
@@ -64,21 +110,26 @@ if command -v colima &>/dev/null; then
     export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
   fi
   if ! colima status &>/dev/null 2>&1; then
-    echo "🎩 Starting Colima..."
-    colima start --vm-type vz --mount-type virtiofs --cpu 4 --memory 8
+    echo "🎩 Preparing ship for Ludicrous Speed..."
+    colima start --vm-type vz --mount-type virtiofs --cpu 4 --memory 8 2>"$QUIET" &
+    spinner $!
+    wait $!
+    echo "  ✓ Ship ready. All bleeps, sweeps, and creeps accounted for."
     STARTED_COLIMA=true
   fi
 elif ! docker info &>/dev/null 2>&1; then
+  echo "We've lost the bleeps, the sweeps, AND the creeps." >&2
   echo "Error: Docker is not running and Colima is not installed." >&2
   exit 1
 fi
 
 # Stop Colima on exit if we started it
 if $STARTED_COLIMA; then
-  trap 'echo "🎩 Stopping Colima..."; colima stop' EXIT
+  trap "echo ''; echo '🎩 Goodbye, Lone Starr.'; colima stop 2>\"$QUIET\"" EXIT
 fi
 
 # Build image if needed
+echo "  ◎ Mr. Radar is scanning the environment..."
 USER_UID="$(id -u)"
 USER_GID="$(id -g)"
 
@@ -86,7 +137,9 @@ docker build -q \
   --build-arg USER_UID="$USER_UID" \
   --build-arg USER_GID="$USER_GID" \
   -t "$IMAGE_NAME" \
-  "$SCRIPT_DIR" > /dev/null
+  "$SCRIPT_DIR" > /dev/null 2>"$QUIET"
+
+echo "  ✓ Radar locked."
 
 # Build volume flags
 VOLUMES=(-v "$REPO_PATH:/workspace")
@@ -110,13 +163,13 @@ if [[ -f "$IGNORE_FILE" ]]; then
     if [[ -f "$HOST_PATH" ]]; then
       # Files: mount /dev/null over them (appears as empty file)
       VOLUMES+=(-v "/dev/null:$CONTAINER_PATH:ro")
-      echo "→ Hidden:    $line (file)"
+      echo "  → Cloaked:   $line (file)"
     elif [[ -d "$HOST_PATH" ]]; then
       # Directories: anonymous volume overlay (appears as empty dir)
       VOLUMES+=(-v "$CONTAINER_PATH")
-      echo "→ Hidden:    $line (dir)"
+      echo "  → Cloaked:   $line (dir)"
     else
-      echo "→ Skipped:   $line (not found)"
+      echo "  → Not found: $line (we ain't found shit)"
     fi
   done < "$IGNORE_FILE"
 fi
@@ -124,10 +177,24 @@ fi
 # Persist Claude config between runs
 VOLUMES+=(-v "mister-claude-config:/home/coder/.claude")
 
-echo "🎩 Mister Claude"
-echo "→ Repo:      $REPO_PATH"
-echo "→ UID/GID:   $USER_UID:$USER_GID"
-echo "→ Firewall:  enabled"
+cat << 'BANNER'
+      __  __ ____     ____ _                 _
+     |  \/  |  _ \ . / ___| | __ _ _   _  __| | ___
+     | |\/| | |_) |  | |   | |/ _` | | | |/ _` |/ _ \
+     | |  | |  _ <   | |___| | (_| | |_| | (_| |  __/
+     |_|  |_|_| \_\   \____|_|\__,_|\__,_|\__,_|\___|
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Sandboxed Claude Code  ·
+  "It's my industrial-strength hair dryer, AND IT WORKS."
+
+BANNER
+echo "  → Repo:      $REPO_PATH"
+if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+  echo "  → Schwartz:  engaged (API key)"
+else
+  echo "  → Schwartz:  I see your Schwartz is as big as mine... you DO have a subscription, right?"
+fi
+echo "  → Firewall:  jammed (just like their radar)"
 echo ""
 
 docker run --rm -it \
