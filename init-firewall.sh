@@ -99,6 +99,12 @@ iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 # Allow outbound traffic to whitelisted domains only
 iptables -A OUTPUT -m set --match-set allowed-domains dst -j ACCEPT
 
+# If ALLOW_WEB is set, open outbound HTTPS (port 443) to any destination
+if [ "${ALLOW_WEB:-}" = "1" ]; then
+    echo "Web access enabled — allowing outbound HTTPS (port 443)"
+    iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
+fi
+
 # Explicitly REJECT all other outbound traffic for immediate feedback
 iptables -A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
 
@@ -109,9 +115,18 @@ iptables -P OUTPUT DROP
 
 echo "Firewall configuration complete"
 echo "Verifying firewall rules..."
-if curl --connect-timeout 5 https://example.com >/dev/null 2>&1; then
-    echo "ERROR: Firewall verification failed - was able to reach https://example.com"
-    exit 1
+if [ "${ALLOW_WEB:-}" = "1" ]; then
+    # With web access enabled, verify whitelisted domains work
+    if curl --connect-timeout 5 https://api.anthropic.com >/dev/null 2>&1; then
+        echo "Firewall verification passed — HTTPS outbound open, whitelisted domains reachable"
+    else
+        echo "WARNING: Could not reach api.anthropic.com — network may not be fully ready"
+    fi
 else
-    echo "Firewall verification passed - unable to reach https://example.com as expected"
+    if curl --connect-timeout 5 https://example.com >/dev/null 2>&1; then
+        echo "ERROR: Firewall verification failed - was able to reach https://example.com"
+        exit 1
+    else
+        echo "Firewall verification passed - unable to reach https://example.com as expected"
+    fi
 fi

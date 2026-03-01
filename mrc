@@ -8,6 +8,7 @@
 #
 # Options:
 #   -v, --verbose  Show Colima and Docker output (useful for debugging)
+#   -w, --web      Allow outbound HTTPS to any host (for web search/fetch)
 #
 # Examples:
 #   mrc ~/projects/myapp
@@ -64,10 +65,12 @@ IMAGE_NAME="mister-claude"
 
 # Parse flags
 VERBOSE=false
+ALLOW_WEB=false
 args=()
 for arg in "$@"; do
   case "$arg" in
     --verbose|-v) VERBOSE=true ;;
+    --web|-w)     ALLOW_WEB=true ;;
     *) args+=("$arg") ;;
   esac
 done
@@ -101,6 +104,10 @@ ENV_FLAGS=()
 if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
   ENV_FLAGS+=(-e ANTHROPIC_API_KEY)
 fi
+if $ALLOW_WEB; then
+  ENV_FLAGS+=(-e ALLOW_WEB=1)
+fi
+ENV_FLAGS+=(-e CLAUDE_CODE_MAX_OUTPUT_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-128000}")
 
 # Ensure Colima is running
 STARTED_COLIMA=false
@@ -220,7 +227,11 @@ if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
 else
   echo "  → Schwartz:  I see your Schwartz is as big as mine... you DO have a subscription, right?"
 fi
-echo "  → Firewall:  jammed (just like their radar)"
+if $ALLOW_WEB; then
+  echo "  → Firewall:  jammed, but he can see the web (--web)"
+else
+  echo "  → Firewall:  jammed (just like their radar)"
+fi
 echo ""
 
 docker run --rm -it --init \
