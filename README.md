@@ -76,25 +76,7 @@ echo '{"cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]}' > ~/.do
 
 > **Note:** If you already have a `~/.docker/config.json` with other settings, merge the `cliPluginsExtraDirs` key into it manually instead of overwriting the file.
 
-### 4. Start Colima
-
-```bash
-colima start --vm-type vz --mount-type virtiofs --cpu 4 --memory 8
-```
-
-- `--vm-type vz` — Apple's native Virtualization.framework (fast, low overhead)
-- `--mount-type virtiofs` — fast file sharing between host and VM
-- `--cpu 4 --memory 8` — allocates 4 CPU cores and 8 GB RAM to the VM
-
-You only need to start Colima once per boot. `mrc` will auto-start it if it's not running.
-
-Stop it when you're done to reclaim resources:
-
-```bash
-colima stop
-```
-
-### 5. Get an Anthropic API key
+### [Optional] 4. Get an Anthropic API key
 
 Go to [console.anthropic.com](https://console.anthropic.com/) and create an API key. A dedicated key for Mister Claude is recommended so you can revoke it independently.
 
@@ -103,11 +85,11 @@ Go to [console.anthropic.com](https://console.anthropic.com/) and create an API 
 1. **Clone this repo:**
 
    ```bash
-   git clone <repo-url>
+   git clone git@github.com:aisaacs/mrc.git
    cd mister-claude
    ```
 
-2. **Create the `.env` file** in the repo root:
+2. [Optional] **Create the `.env` file** in the repo root
 
    ```bash
    echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
