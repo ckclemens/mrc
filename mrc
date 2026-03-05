@@ -145,9 +145,16 @@ if ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
   BUILD_FLAGS+=(--no-cache)
 fi
 
-docker build "${BUILD_FLAGS[@]}" \
+BUILD_LOG=$(mktemp)
+if ! docker build "${BUILD_FLAGS[@]}" \
   -t "$IMAGE_NAME" \
-  "$SCRIPT_DIR" > /dev/null 2>"$QUIET"
+  "$SCRIPT_DIR" > /dev/null 2>"$BUILD_LOG"; then
+  echo "  ✗ Build failed. Docker output:" >&2
+  cat "$BUILD_LOG" >&2
+  rm -f "$BUILD_LOG"
+  exit 1
+fi
+rm -f "$BUILD_LOG"
 
 echo "  ✓ Radar locked."
 
