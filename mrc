@@ -48,7 +48,7 @@ spinner() {
   while kill -0 "$pid" 2>/dev/null; do
     printf "\r  %s %s" "${frames[$((i % ${#frames[@]}))]}" "$quote"
     sleep 0.1
-    ((i++))
+    ((++i))
   done
   printf "\r%*s\r" $((${#quote} + 6)) ""   # clear the line
 }
