@@ -25,7 +25,7 @@ sudo ALLOW_WEB="${ALLOW_WEB:-}" /usr/local/bin/init-firewall.sh
 # Ensure the symlink target for .claude.json exists in the persistent volume
 CONFIG_TARGET="$HOME/.claude/claude.json"
 if [ ! -f "$CONFIG_TARGET" ]; then
-  LATEST_BACKUP=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1)
+  LATEST_BACKUP=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1 || true)
   if [ -n "$LATEST_BACKUP" ]; then
     echo "Restoring Claude config from backup..."
     cp "$LATEST_BACKUP" "$CONFIG_TARGET"
