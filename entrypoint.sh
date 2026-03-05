@@ -19,7 +19,7 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-sudo /usr/local/bin/init-firewall.sh
+sudo ALLOW_WEB="${ALLOW_WEB:-}" /usr/local/bin/init-firewall.sh
 
 # Ensure the symlink target for .claude.json exists in the persistent volume
 CONFIG_TARGET="$HOME/.claude/claude.json"
@@ -38,4 +38,17 @@ if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   fi
 fi
 
-exec claude --dangerously-skip-permissions "$@"
+echo "Launching Claude Code..."
+claude --dangerously-skip-permissions "$@"
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
+  echo ""
+  echo "Claude exited with code $EXIT_CODE"
+  echo "Debug info:"
+  echo "  Node: $(node --version 2>&1 || echo 'not found')"
+  echo "  Claude: $(claude --version 2>&1 || echo 'not found')"
+  echo "  TERM: ${TERM:-unset}"
+  echo "  TTY: $(tty 2>&1 || echo 'not a tty')"
+  echo "  API key set: $([ -n "${ANTHROPIC_API_KEY:-}" ] && echo yes || echo no)"
+fi
+exit $EXIT_CODE

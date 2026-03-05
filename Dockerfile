@@ -32,7 +32,7 @@ RUN mkdir -p /workspace /home/coder/.claude/debug && \
 # Firewall script + sudoers so coder can run it without password
 COPY init-firewall.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/init-firewall.sh \
-    && echo "coder ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/coder-firewall \
+    && echo 'coder ALL=(root) NOPASSWD: SETENV: /usr/local/bin/init-firewall.sh' > /etc/sudoers.d/coder-firewall \
     && chmod 0440 /etc/sudoers.d/coder-firewall
 
 COPY entrypoint.sh /usr/local/bin/
