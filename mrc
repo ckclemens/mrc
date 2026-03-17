@@ -227,8 +227,9 @@ if [[ -f "$IGNORE_FILE" ]]; then
   done < "$IGNORE_FILE"
 fi
 
-# Persist Claude config between runs
-VOLUMES+=(-v "mister-claude-config:/home/coder/.claude")
+# Persist Claude config between runs (per-repo to avoid cross-project contamination)
+REPO_HASH="$(printf '%s' "$REPO_PATH" | md5sum | cut -c1-12)"
+VOLUMES+=(-v "mrc-config-${REPO_HASH}:/home/coder/.claude")
 
 # Start clipboard proxy if socat is available
 CLIP_PORT="7722"
