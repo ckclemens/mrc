@@ -88,8 +88,14 @@ if [ -d "/workspace/.git" ]; then
   fi
 fi
 
+# Auto-resume if a prior conversation exists in .mrc/
+RESUME_FLAG=""
+if ls /workspace/.mrc/*.jsonl >/dev/null 2>&1; then
+  RESUME_FLAG="--continue"
+fi
+
 echo "Launching Claude Code..."
-claude --dangerously-skip-permissions --continue "$@"
+claude --dangerously-skip-permissions $RESUME_FLAG "$@"
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then
   echo ""
