@@ -65,8 +65,31 @@ if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   fi
 fi
 
+# Store Claude's project memory in the repo itself (survives volume resets,
+# travels with the project).  Claude Code uses ~/.claude/projects/-workspace/
+# for /workspace paths.  We symlink that into /workspace/.mrc/ so the data
+# lives in the bind-mounted repo.
+MRC_LOCAL="/workspace/.mrc"
+PROJECT_STORE="$HOME/.claude/projects/-workspace"
+if [ ! -L "$PROJECT_STORE" ]; then
+  mkdir -p "$MRC_LOCAL" "$(dirname "$PROJECT_STORE")"
+  # Move any existing project data into the repo
+  if [ -d "$PROJECT_STORE" ]; then
+    cp -a "$PROJECT_STORE/." "$MRC_LOCAL/" 2>/dev/null || true
+    rm -rf "$PROJECT_STORE"
+  fi
+  ln -sf "$MRC_LOCAL" "$PROJECT_STORE"
+fi
+
+# Seed .gitignore entry for .mrc/ if the repo uses git
+if [ -d "/workspace/.git" ]; then
+  if [ ! -f "/workspace/.gitignore" ] || ! grep -qxF '.mrc/' /workspace/.gitignore 2>/dev/null; then
+    echo '.mrc/' >> /workspace/.gitignore
+  fi
+fi
+
 echo "Launching Claude Code..."
-claude --dangerously-skip-permissions "$@"
+claude --dangerously-skip-permissions --continue "$@"
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then
   echo ""

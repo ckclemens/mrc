@@ -266,6 +266,7 @@ cat << 'BANNER'
 
 BANNER
 echo "  → Repo:      $REPO_PATH"
+echo "  → Volume:    mrc-config-${REPO_HASH}"
 if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
   echo "  → Schwartz:  engaged (API key)"
 else

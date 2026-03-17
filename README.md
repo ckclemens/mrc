@@ -35,6 +35,7 @@ init-firewall.sh     # iptables + ipset whitelist — the lock on the door
 clipboard-proxy.sh   # host-side clipboard server (TCP, socat)
 clipboard-shim.sh    # container-side xclip replacement
 .env                 # your API key (not checked in)
+.mrc/                # project-local Claude memory (auto-created, gitignored)
 ```
 
 ## Prerequisites (macOS, from scratch)
@@ -127,7 +128,11 @@ mrc -v ~/projects/my-app
 
 First run builds the Docker image (~2 min). After that it's ready in about 5 seconds while the firewall sets up.
 
-When you quit Claude, the container disappears. Your files are safe on the host — only the container is ephemeral. Claude's config (settings, conversation history) is persisted in a Docker volume between runs.
+When you quit Claude, the container disappears. Your files are safe on the host — only the container is ephemeral.
+
+Claude's global config (auth, settings, plugins) is persisted in a per-repo Docker volume (`mrc-config-<hash>`) between runs. Project-specific data (memory, conversation history, project settings) is stored in `.mrc/` inside the repo itself — it survives volume resets and travels with the project.
+
+Sessions auto-resume: when you re-open the same repo, Claude picks up where you left off. To start fresh, pass `-- --no-continue` or delete `.mrc/`.
 
 ## Keeping secrets from Mister Claude
 
@@ -150,6 +155,29 @@ secrets/
 - Comments (`#`) and blank lines are supported
 
 He doesn't know what he's missing.
+
+## Data persistence
+
+Mister Claude stores data in two places:
+
+**Per-repo Docker volume** (`mrc-config-<hash>`) — holds global Claude config: auth state, global settings, installed plugins. Each repo gets its own volume (keyed by MD5 hash of the repo path) so projects don't contaminate each other. The volume name is shown in the banner at startup.
+
+**`.mrc/` in your repo** — holds project-specific Claude data: memory, conversation history, project settings. This directory is:
+- Auto-created on first run
+- Auto-added to `.gitignore`
+- Symlinked from `~/.claude/projects/-workspace/` inside the container
+
+Because `.mrc/` lives in the repo, it survives volume resets and travels with the project if you move or clone it. To start fresh, just `rm -rf .mrc/`.
+
+To nuke the volume for a repo:
+
+```bash
+# Find the volume name (shown in the mrc banner, or:)
+docker volume ls | grep mrc-config
+
+# Remove it
+docker volume rm mrc-config-<hash>
+```
 
 ## Letting him visit new places
 
@@ -175,12 +203,13 @@ The next `mrc` run will rebuild the image with the new firewall rules.
 
 ## How it works
 
-1. `mrc` resolves the repo path, auto-starts Colima if needed, builds the Docker image, reads `.sandboxignore`, and starts the container with the repo bind-mounted at `/workspace`
+1. `mrc` resolves the repo path, auto-starts Colima if needed, builds the Docker image, reads `.sandboxignore`, creates a per-repo config volume (`mrc-config-<hash>`), and starts the container with the repo bind-mounted at `/workspace`
 2. The container runs as a non-root `coder` user with UID/GID matching your host user (no permission weirdness with bind-mounted files)
 3. `entrypoint.sh` waits for the network, then runs `init-firewall.sh` via passwordless sudo
 4. The firewall resolves each allowed domain to IPs, adds them to an `ipset`, sets the default iptables policy to DROP, and verifies that `example.com` is unreachable
-5. Claude Code starts with `--dangerously-skip-permissions` — the container is the security boundary, so Claude can freely run commands inside it
-6. VS Code on the host sees all file changes instantly via the bind mount
+5. The entrypoint symlinks Claude's project store into `/workspace/.mrc/` so memory and project data persist in the repo
+6. Claude Code starts with `--dangerously-skip-permissions` — the container is the security boundary, so Claude can freely run commands inside it
+7. VS Code on the host sees all file changes instantly via the bind mount
 
 ## Customization
 
