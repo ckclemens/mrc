@@ -124,7 +124,8 @@ if [[ "${1:-}" == "sessions" ]]; then
         exit 1
       fi
       RESUME_SESSION="$(python3 "$SESSIONS" resolve "$REPO_PATH/.mrc" "$QUERY")"
-      # Fall through to normal launch with RESUME_SESSION set
+      # Clear args and fall through to normal launch with RESUME_SESSION set
+      set --
       ;;
     *)
       echo "Unknown sessions command: $SUBCMD" >&2
