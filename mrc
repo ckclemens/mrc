@@ -9,7 +9,7 @@
 # Options:
 #   -r, --rebuild  Force a full image rebuild (no cache)
 #   -v, --verbose  Show Colima and Docker output (useful for debugging)
-#   -n, --new            Start a new conversation (don't resume the previous one)
+#   -n, --new [name]     Start a new conversation (optionally named)
 #   -w, --web            Allow outbound HTTPS to any host (for web search/fetch)
 #
 # Session management:
@@ -80,7 +80,9 @@ args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --help|-h)     sed -n '2,/^$/{s/^# //;s/^#//;p;}' "$0"; exit 0 ;;
-    --new|-n)      NEW_SESSION=true ;;
+    --new|-n)      NEW_SESSION=true; NEW_SESSION_NAME="${2:-}";
+                   if [[ -n "$NEW_SESSION_NAME" && "$NEW_SESSION_NAME" != -* ]]; then shift; fi
+                   ;;
     --rebuild|-r)  REBUILD=true ;;
     --verbose|-v)  VERBOSE=true ;;
     --web|-w)      ALLOW_WEB=true ;;
@@ -349,6 +351,13 @@ else
 fi
 echo ""
 
+# Snapshot existing sessions so we can detect the new one after exit
+MRC_DIR="$REPO_PATH/.mrc"
+BEFORE_SESSIONS=""
+if [[ -d "$MRC_DIR" ]]; then
+  BEFORE_SESSIONS="$(ls "$MRC_DIR"/*.jsonl 2>/dev/null || true)"
+fi
+
 docker run --rm -it --init \
   --cap-add=NET_ADMIN \
   --cap-add=NET_RAW \
@@ -357,3 +366,16 @@ docker run --rm -it --init \
   "${VOLUMES[@]}" \
   "$IMAGE_NAME" \
   "$@"
+EXIT_CODE=$?
+
+# Name the new session if --new was given with a name
+if [[ -n "${NEW_SESSION_NAME:-}" && -d "$MRC_DIR" ]]; then
+  AFTER_SESSIONS="$(ls "$MRC_DIR"/*.jsonl 2>/dev/null || true)"
+  NEW_FILE="$(comm -13 <(echo "$BEFORE_SESSIONS") <(echo "$AFTER_SESSIONS") | head -1)"
+  if [[ -n "$NEW_FILE" ]]; then
+    NEW_UUID="$(basename "$NEW_FILE" .jsonl)"
+    python3 "$SCRIPT_DIR/mrc-sessions" name "$MRC_DIR" "$NEW_SESSION_NAME" "$NEW_UUID" 2>/dev/null
+  fi
+fi
+
+exit $EXIT_CODE

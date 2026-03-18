@@ -82,6 +82,11 @@ def resolve(mrc_dir, query):
         if names.get(uuid) == query:
             return uuid
 
+    # Try as a raw UUID
+    for uuid, _, _ in sessions:
+        if uuid == query:
+            return uuid
+
     return None
 
 

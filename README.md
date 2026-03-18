@@ -139,6 +139,12 @@ Sessions auto-resume: when you re-open the same repo, Claude picks up where you 
 Each conversation is saved in `.mrc/` and can be listed, named, and resumed.
 
 ```bash
+# Start a new named session
+mrc --new fix-bug-42
+
+# Start a new unnamed session
+mrc --new
+
 # List sessions
 mrc sessions ls
 
