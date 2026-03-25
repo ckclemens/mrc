@@ -34,6 +34,8 @@ entrypoint.sh        # waits for network, runs firewall, starts claude
 init-firewall.sh     # iptables + ipset whitelist — the lock on the door
 clipboard-proxy.sh   # host-side clipboard server (TCP, socat)
 clipboard-shim.sh    # container-side xclip replacement
+notify-proxy.sh      # host-side notification proxy (TCP, socat + terminal-notifier)
+mrc-notify-hook.sh   # container-side hook that sends notification on response complete
 .env                 # your API key (not checked in)
 .mrc/                # project-local Claude memory (auto-created, gitignored)
 ```
@@ -60,7 +62,7 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 ### 2. Install Docker + Colima
 
 ```bash
-brew install docker docker-buildx colima
+brew install docker docker-buildx colima socat terminal-notifier
 ```
 
 This installs:
@@ -329,6 +331,50 @@ Just copy an image to your clipboard on the host and press **Ctrl+V** inside Cla
 4. Host-side proxy logs appear in the terminal where `mrc` is running (stderr).
 
 **"No route to host" in shim logs** — The firewall may be blocking traffic to `host.docker.internal`. Rebuild the image (`docker rmi mister-claude`) to pick up the latest firewall rules that allow this route.
+
+## Notifications
+
+Mister Claude sends a desktop notification every time Claude finishes a response, so you can work in another window and know when he's ready.
+
+### Prerequisites
+
+Install `terminal-notifier` and `socat` on the host:
+
+```bash
+brew install terminal-notifier socat
+```
+
+### Do Not Disturb
+
+Notifications come from the **terminal-notifier** app. To let them through macOS Focus / Do Not Disturb:
+
+1. **System Settings** → **Focus** → **Do Not Disturb**
+2. **Allowed Notifications** → **Apps** → **Add** → select **terminal-notifier**
+
+### Options
+
+```bash
+mrc --no-notify ~/projects/my-app   # disable notifications entirely
+mrc --no-sound ~/projects/my-app    # notifications without the Glass sound
+```
+
+### Troubleshooting notifications
+
+**Notifications appear in Notification Center but not on screen** — The notification style is set to "None". Go to **System Settings** → **Notifications** → find **terminal-notifier** → set the style to **Banners** (auto-dismiss) or **Alerts** (stay until dismissed).
+
+**No notifications while screen sharing or mirroring** — macOS suppresses notifications during screen sharing by default. Go to **System Settings** → **Notifications** → **Show Notifications** → set **"when mirroring or sharing the display"** to **Allow Notifications**.
+
+**Two terminal-notifier entries in notification settings** — This is a known quirk. One is typically from Homebrew, the other from a previous install or a bundled copy. Make sure both have notifications enabled and the style set to Banners or Alerts.
+
+**Notifications not appearing at all** — macOS may silently block `terminal-notifier` on first use. Go to **System Settings** → **Notifications** → find **terminal-notifier** → make sure **Allow Notifications** is toggled on.
+
+**Quick test from the host** — Run this to verify `terminal-notifier` works outside of mrc:
+
+```bash
+terminal-notifier -title "Mr. Claude · test" -message "Ready for input." -sound Glass
+```
+
+If nothing appears, check the settings above. If you see an error, make sure it's installed (`brew install terminal-notifier`).
 
 ## Troubleshooting
 

@@ -29,11 +29,11 @@ handle_connection() {
 
   case "$(uname -s)" in
     Darwin)
-      local sound_arg=""
+      local notify_args=(-title "$title" -message "$summary" -group "mrc")
       if ! $NO_SOUND; then
-        sound_arg=' sound name "Glass"'
+        notify_args+=(-sound Glass)
       fi
-      osascript -e "display notification \"$summary\" with title \"$title\"${sound_arg}" 2>/dev/null || true
+      terminal-notifier "${notify_args[@]}" 2>/dev/null || true
       ;;
     Linux)
       notify-send "$title" "$summary" 2>/dev/null || true

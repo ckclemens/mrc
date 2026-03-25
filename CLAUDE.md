@@ -16,7 +16,7 @@ The system has seven components:
 
 2. **`clipboard-proxy.sh`** (bash) — Host-side TCP proxy. Serves clipboard content (text and images) to the container via socat. The container reaches it through `host.docker.internal`. Port is dynamically allocated starting from `MRC_PORT_BASE` (default 7722).
 
-3. **`notify-proxy.sh`** (bash) — Host-side TCP proxy. Receives notification messages from the container and fires native desktop notifications (`osascript` on macOS, `notify-send` on Linux). Supports `--no-sound` to suppress the Glass sound. Port is dynamically allocated (clipboard port + 1). Protocol: line 1 = repo name (title), line 2 = summary (body).
+3. **`notify-proxy.sh`** (bash) — Host-side TCP proxy. Receives notification messages from the container and fires native desktop notifications (`terminal-notifier` on macOS, `notify-send` on Linux). Supports `--no-sound` to suppress the Glass sound. Port is dynamically allocated (clipboard port + 1). Protocol: line 1 = repo name (title), line 2 = summary (body).
 
 ### Container-side (runs inside Docker)
 

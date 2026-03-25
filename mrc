@@ -476,6 +476,11 @@ fi
 # Start notification proxy (fires macOS/Linux desktop notifications)
 NOTIFY_PORT="$(find_free_port $((CLIP_PORT + 1)))"
 NOTIFY_PID=""
+if [[ "$(uname -s)" == "Darwin" ]] && ! command -v terminal-notifier &>/dev/null; then
+  echo "  ! terminal-notifier not found — install it for desktop notifications:"
+  echo "    brew install terminal-notifier"
+  NO_NOTIFY=true
+fi
 if ! $NO_NOTIFY && command -v socat &>/dev/null; then
   NOTIFY_PROXY_ARGS=("$NOTIFY_PORT")
   if $NO_SOUND; then
