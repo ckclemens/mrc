@@ -199,13 +199,75 @@ if [[ "${1:-}" == "status" ]]; then
   exit 0
 fi
 
+# --- Load .env early (needed for session naming in pick/sessions commands) ---
+ENV_FILE="$SCRIPT_DIR/.env"
+if [[ -f "$ENV_FILE" ]]; then
+  if grep -q 'op://' "$ENV_FILE" 2>/dev/null && command -v op &>/dev/null; then
+    # Try without --account first, then prompt if it fails
+    if [[ -n "${OP_ACCOUNT:-}" ]]; then
+      _OP_KEY="$(op run --env-file "$ENV_FILE" --no-masking --account "$OP_ACCOUNT" -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
+    else
+      _OP_KEY="$(op run --env-file "$ENV_FILE" --no-masking -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
+    fi
+    # If that failed, try each known account silently
+    if [[ -z "$_OP_KEY" && -z "${OP_ACCOUNT:-}" ]]; then
+      mapfile -t _OP_ACCOUNTS < <(op account list --format=json 2>/dev/null | python3 -c 'import sys,json; [print(a["url"]) for a in json.load(sys.stdin)]' 2>/dev/null)
+      for _acct in "${_OP_ACCOUNTS[@]}"; do
+        _OP_KEY="$(op run --env-file "$ENV_FILE" --no-masking --account "$_acct" -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
+        if [[ -n "$_OP_KEY" ]]; then
+          break
+        fi
+      done
+    fi
+    if [[ -n "$_OP_KEY" ]]; then
+      MRC_API_KEY="$_OP_KEY"
+    fi
+  else
+    set -a
+    source "$ENV_FILE"
+    set +a
+  fi
+fi
+MRC_API_KEY="${MRC_API_KEY:-${ANTHROPIC_API_KEY:-}}"
+
+if [[ -z "${MRC_API_KEY:-}" ]]; then
+  echo ""
+  echo "  ⚠ The Schwartz is not with you... no API key found!"
+  echo ""
+  echo "  \"I can't make it work without the combination!\""
+  echo "     — Colonel Sandurz, probably talking about this .env file"
+  echo ""
+  echo "  mrc needs an Anthropic API key for session naming and summaries."
+  echo "  This is NOT your Claude Code subscription — it's a separate key"
+  echo "  for Haiku API calls. Think of it as the combination to the air shield."
+  echo ""
+  echo "  To unlock Druidia's fresh air supply:"
+  echo ""
+  echo "    1. Install the 1Password CLI (op) — it's like having the"
+  echo "       Schwartz ring, but for secrets"
+  echo "    2. Create a .env file next to the mrc script:"
+  echo "       ${SCRIPT_DIR}/.env"
+  echo "    3. Add this line (the combination is... 1-2-3-4-5):"
+  echo ""
+  echo "       ANTHROPIC_API_KEY=\"op://Engineering/MRC Claude API key/credential\""
+  echo ""
+  echo "  The 1Password CLI will resolve the secret on launch. No need to"
+  echo "  write the actual key down — that's the kind of thing an idiot"
+  echo "  would have on his luggage."
+  echo ""
+  echo "  Once you complete these steps, run the command again."
+  echo "  May the Schwartz be with you!"
+  echo ""
+  exit 1
+fi
+
 # --- Subcommand: mrc pick [path] ---
 if [[ "${1:-}" == "pick" ]]; then
   shift
   REPO_PATH="${1:-.}"
   REPO_PATH="$(cd "$REPO_PATH" && pwd)"
   SESSIONS="$SCRIPT_DIR/mrc-sessions"
-  PICK_RESULT="$(python3 "$SESSIONS" pick "$REPO_PATH/.mrc")"
+  PICK_RESULT="$(ANTHROPIC_API_KEY="${MRC_API_KEY}" python3 "$SESSIONS" pick "$REPO_PATH/.mrc")"
   if [[ "$PICK_RESULT" == "NEW" ]]; then
     NEW_SESSION=true
     ALLOW_WEB=true
@@ -225,7 +287,7 @@ if [[ "${1:-}" == "sessions" ]]; then
     ls)
       REPO_PATH="${1:-.}"
       REPO_PATH="$(cd "$REPO_PATH" && pwd)"
-      python3 "$SESSIONS" list "$REPO_PATH/.mrc"
+      ANTHROPIC_API_KEY="${MRC_API_KEY}" python3 "$SESSIONS" list "$REPO_PATH/.mrc"
       ;;
     name)
       NAME="${1:-}"
@@ -253,7 +315,7 @@ if [[ "${1:-}" == "sessions" ]]; then
     pick)
       REPO_PATH="${1:-.}"
       REPO_PATH="$(cd "$REPO_PATH" && pwd)"
-      PICK_RESULT="$(python3 "$SESSIONS" pick "$REPO_PATH/.mrc")"
+      PICK_RESULT="$(ANTHROPIC_API_KEY="${MRC_API_KEY}" python3 "$SESSIONS" pick "$REPO_PATH/.mrc")"
       if [[ "$PICK_RESULT" == "NEW" ]]; then
         NEW_SESSION=true
         ALLOW_WEB=true
@@ -290,48 +352,6 @@ shift || true
 # Strip optional "--" separator
 [[ "${1:-}" == "--" ]] && shift
 
-
-# Load .env file if present (for dedicated API key).
-# If it contains 1Password references (op://...), resolve via `op run`.
-ENV_FILE="$SCRIPT_DIR/.env"
-if [[ -f "$ENV_FILE" ]]; then
-  if grep -q 'op://' "$ENV_FILE" 2>/dev/null && command -v op &>/dev/null; then
-    # Try without --account first, then prompt if it fails
-    if [[ -n "${OP_ACCOUNT:-}" ]]; then
-      _OP_KEY="$(op run --env-file "$ENV_FILE" --no-masking --account "$OP_ACCOUNT" -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
-    else
-      _OP_KEY="$(op run --env-file "$ENV_FILE" --no-masking -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
-    fi
-    # If that failed, prompt for account selection
-    if [[ -z "$_OP_KEY" && -z "${OP_ACCOUNT:-}" ]]; then
-      mapfile -t _OP_ACCOUNTS < <(op account list --format=json 2>/dev/null | python3 -c 'import sys,json; [print(a["url"]) for a in json.load(sys.stdin)]' 2>/dev/null)
-      if [[ ${#_OP_ACCOUNTS[@]} -eq 1 ]]; then
-        OP_ACCOUNT="${_OP_ACCOUNTS[0]}"
-      elif [[ ${#_OP_ACCOUNTS[@]} -gt 1 ]]; then
-        echo "  1Password couldn't resolve .env — select an account:"
-        for i in "${!_OP_ACCOUNTS[@]}"; do
-          echo "    $((i+1))) ${_OP_ACCOUNTS[$i]}"
-        done
-        read -rp "  → " _OP_CHOICE
-        OP_ACCOUNT="${_OP_ACCOUNTS[$((_OP_CHOICE-1))]}"
-      fi
-      if [[ -n "${OP_ACCOUNT:-}" ]]; then
-        _OP_KEY="$(op run --env-file "$ENV_FILE" --no-masking --account "$OP_ACCOUNT" -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
-      fi
-    fi
-    if [[ -n "$_OP_KEY" ]]; then
-      MRC_API_KEY="$_OP_KEY"
-    fi
-  else
-    set -a
-    source "$ENV_FILE"
-    set +a
-  fi
-fi
-
-# MRC_API_KEY is used for host-side Haiku calls (naming, summaries).
-# Falls back to ANTHROPIC_API_KEY if not set by 1Password resolution above.
-MRC_API_KEY="${MRC_API_KEY:-${ANTHROPIC_API_KEY:-}}"
 
 # Pass API key through to the container if set
 ENV_FLAGS=()

@@ -240,6 +240,7 @@ def cmd_generate_name(mrc_dir, uuid):
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
+        print("\033[1;31m  ✦ Name generation skipped: no ANTHROPIC_API_KEY set\033[0m", file=sys.stderr)
         return
 
     # Use a short transcript — only need first few exchanges for a name
@@ -365,15 +366,56 @@ def cmd_tool_misses(mrc_dir, uuid):
         print(f"{cmd}: {desc}")
 
 
+def ensure_names_migrated(mrc_dir):
+    """One-time migration: auto-name all unnamed sessions via Haiku API."""
+    flag_file = Path(mrc_dir) / "names-migrated"
+    if flag_file.exists():
+        return
+    sessions = get_sessions(mrc_dir)
+    names = load_names(mrc_dir)
+    unnamed = [(uuid, preview) for uuid, _, preview in sessions if uuid not in names]
+    if unnamed:
+        print(
+            f"\n\033[1;36m  ✦ One-time session naming — tagging {len(unnamed)} unnamed session(s).\033[0m",
+            file=sys.stderr,
+        )
+        print("  \033[2m  This only happens once. Future sessions are named automatically.\033[0m\n", file=sys.stderr)
+        for uuid, preview in unnamed:
+            label = preview if preview else uuid[:12]
+            # Suppress cmd_generate_name's own stdout line — we print our own below
+            _saved = sys.stdout
+            sys.stdout = open(os.devnull, "w")
+            try:
+                cmd_generate_name(mrc_dir, uuid)
+            finally:
+                sys.stdout.close()
+                sys.stdout = _saved
+            result_name = load_names(mrc_dir).get(uuid)
+            if result_name:
+                print(f"\033[1;36m  ✦ \033[0;2m\"{label}\"\033[0m \033[1;36m→\033[0m \033[1;33m{result_name}\033[0m", file=sys.stderr)
+            else:
+                print(f"\033[1;31m  ✦ \"{label}\" → (failed)\033[0m", file=sys.stderr)
+        print(file=sys.stderr)
+        # Pause so the user can see results before the TUI clears the screen
+        print("  \033[2mPress Enter to continue…\033[0m", file=sys.stderr, end=" ", flush=True)
+        try:
+            with open("/dev/tty") as tty:
+                tty.readline()
+        except OSError:
+            pass
+    flag_file.write_text(datetime.now().isoformat() + "\n")
+
+
 def cmd_list(mrc_dir):
+    ensure_names_migrated(mrc_dir)
     sessions = get_sessions(mrc_dir)
     if not sessions:
         print(f"No sessions found in {mrc_dir}")
         return
 
     names = load_names(mrc_dir)
-    print(f"  {'#':<5} {'Last Used':<22} {'Name':<50} Preview")
-    print(f"  {'—':<5} {'—————————':<22} {'————':<50} ———————")
+    print(f"  {'#':<5} {'Last Used':<22} {'Name':<80} Preview")
+    print(f"  {'—':<5} {'—————————':<22} {'————':<80} ———————")
     for i, (uuid, ts, preview) in enumerate(sessions, 1):
         name = names.get(uuid, "(unnamed)")
         summary = get_summary_preview(mrc_dir, uuid)
@@ -383,7 +425,7 @@ def cmd_list(mrc_dir):
             ts_display = dt.strftime("%Y-%m-%d %H:%M:%S")
         except (ValueError, TypeError):
             ts_display = ts[:19]
-        print(f"  {i:<5} {ts_display:<22} {name:<50} {display}")
+        print(f"  {i:<5} {ts_display:<22} {name:<80} {display}")
 
 
 def _pick_tui(stdscr, rows):
@@ -457,6 +499,7 @@ def _pick_tui(stdscr, rows):
 
 def cmd_pick(mrc_dir):
     """Interactive session picker. Prints selected UUID or NEW to stdout."""
+    ensure_names_migrated(mrc_dir)
     sessions = get_sessions(mrc_dir)
     names = load_names(mrc_dir)
 
