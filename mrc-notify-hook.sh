@@ -1,27 +1,40 @@
 #!/bin/bash
-# mrc-notify-hook.sh — Container-side Stop hook handler.
-# Reads Claude Code's Stop hook JSON from stdin, extracts a summary,
-# and sends it to the host notification proxy.
+# mrc-notify-hook.sh — Container-side notification hook handler.
+# Reads Claude Code's hook JSON from stdin, detects the event type,
+# extracts an appropriate summary, and sends it to the host
+# notification proxy. Handles Stop, PermissionRequest, and Notification events.
 set -euo pipefail
 
 PORT="${MRC_NOTIFY_PORT:-7723}"
 REPO="${MRC_REPO_NAME:-workspace}"
 
-# Extract and truncate the last assistant message from hook JSON
+# Extract a summary from the hook JSON, dispatching on hook_event_name.
 SUMMARY=$(node -e "
   let d = '';
   process.stdin.on('data', c => d += c);
   process.stdin.on('end', () => {
     try {
       const h = JSON.parse(d);
-      let msg = (h.last_assistant_message || '').trim();
-      // Strip markdown formatting for cleaner notification
-      msg = msg.replace(/[#*\`\[\]]/g, '').replace(/\n+/g, ' ').trim();
-      if (msg.length > 140) msg = msg.substring(0, 140) + '…';
-      console.log(msg || 'Done.');
-    } catch(e) { console.log('Done.'); }
+      const clean = s => String(s).replace(/[#*\`\[\]]/g, '').replace(/\n+/g, ' ').trim();
+      const trunc = s => s.length > 140 ? s.substring(0, 140) + '…' : s;
+      let msg;
+      switch (h.hook_event_name) {
+        case 'Stop':
+          msg = trunc(clean(h.last_assistant_message || '')) || 'Done.';
+          break;
+        case 'PermissionRequest':
+          msg = h.tool_name ? 'Needs approval: ' + h.tool_name : 'Needs your approval';
+          break;
+        case 'Notification':
+          msg = h.message ? trunc(clean(h.message)) : 'Needs your attention';
+          break;
+        default:
+          msg = 'Needs your attention';
+      }
+      console.log(msg);
+    } catch(e) { console.log('Needs your attention'); }
   });
-" 2>/dev/null || echo "Done.")
+" 2>/dev/null || echo "Needs your attention")
 
 # Protocol: line 1 = repo name, line 2 = summary
 printf '%s\n%s\n' "$REPO" "$SUMMARY" \

@@ -35,7 +35,7 @@ init-firewall.sh     # iptables + ipset whitelist — the lock on the door
 clipboard-proxy.sh   # host-side clipboard server (TCP, socat)
 clipboard-shim.sh    # container-side xclip replacement
 notify-proxy.sh      # host-side notification proxy (TCP, socat + terminal-notifier)
-mrc-notify-hook.sh   # container-side hook that sends notification on response complete
+mrc-notify-hook.sh   # container-side hook that sends notifications (Stop, PermissionRequest, Notification)
 .env                 # your API key (not checked in)
 .mrc/                # project-local Claude memory (auto-created, gitignored)
 ```
@@ -334,7 +334,7 @@ Just copy an image to your clipboard on the host and press **Ctrl+V** inside Cla
 
 ## Notifications
 
-Mister Claude sends a desktop notification every time Claude finishes a response, so you can work in another window and know when he's ready.
+Mister Claude sends a desktop notification whenever Claude needs your attention — when he finishes a response, when he asks for permission to run a tool, and when he shows the plan approval prompt. Work in another window and he'll tap you on the shoulder when he needs you.
 
 ### Prerequisites
 

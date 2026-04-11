@@ -110,13 +110,16 @@ if [ -n "${MRC_NOTIFY_PORT:-}" ]; then
     const fs = require('fs');
     const s = JSON.parse(fs.readFileSync('$SETTINGS_FILE', 'utf8'));
     s.hooks = s.hooks || {};
-    s.hooks.Stop = [{
+    const hookEntry = [{
       matcher: '',
       hooks: [{
         type: 'command',
         command: '/usr/local/bin/mrc-notify-hook.sh'
       }]
     }];
+    s.hooks.Stop = hookEntry;
+    s.hooks.PermissionRequest = hookEntry;
+    s.hooks.Notification = hookEntry;
     fs.writeFileSync('$SETTINGS_FILE', JSON.stringify(s, null, 2) + '\n');
   "
 fi
