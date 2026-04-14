@@ -179,6 +179,18 @@ def extract_transcript(mrc_dir, uuid, max_chars=0):
     return transcript
 
 
+def _check_auth_error(e):
+    """If the error is a 401, print a restart hint and return True."""
+    if isinstance(e, urllib.error.HTTPError) and e.code == 401:
+        print(
+            "\033[1;31m  ✦ API key rejected (401). The key may have been rotated.\033[0m\n"
+            "\033[0;2m    Exit this session and relaunch mrc to pick up the new key.\033[0m",
+            file=sys.stderr,
+        )
+        return True
+    return False
+
+
 def cmd_summarize(mrc_dir, uuid):
     """Generate a session summary using Claude Haiku."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -217,6 +229,9 @@ def cmd_summarize(mrc_dir, uuid):
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        _check_auth_error(e)
+        return
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return
 
@@ -274,8 +289,9 @@ def cmd_generate_name(mrc_dir, uuid):
         with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read())
     except urllib.error.HTTPError as e:
-        error_body = e.read().decode("utf-8", errors="replace")[:200]
-        print(f"\033[1;31m  ✦ Name generation failed: {e} — {error_body}\033[0m", file=sys.stderr)
+        if not _check_auth_error(e):
+            error_body = e.read().decode("utf-8", errors="replace")[:200]
+            print(f"\033[1;31m  ✦ Name generation failed: {e} — {error_body}\033[0m", file=sys.stderr)
         return
     except (urllib.error.URLError, OSError, json.JSONDecodeError) as e:
         print(f"\033[1;31m  ✦ Name generation failed: {e}\033[0m", file=sys.stderr)
