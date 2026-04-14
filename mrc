@@ -211,7 +211,10 @@ if [[ -f "$ENV_FILE" ]]; then
     fi
     # If that failed, try each known account silently
     if [[ -z "$_OP_KEY" && -z "${OP_ACCOUNT:-}" ]]; then
-      mapfile -t _OP_ACCOUNTS < <(op account list --format=json 2>/dev/null | python3 -c 'import sys,json; [print(a["url"]) for a in json.load(sys.stdin)]' 2>/dev/null)
+      _OP_ACCOUNTS=()
+      while IFS= read -r _line; do
+        _OP_ACCOUNTS+=("$_line")
+      done < <(op account list --format=json 2>/dev/null | python3 -c 'import sys,json; [print(a["url"]) for a in json.load(sys.stdin)]' 2>/dev/null)
       for _acct in "${_OP_ACCOUNTS[@]}"; do
         _OP_KEY="$(op run --env-file "$ENV_FILE" --no-masking --account "$_acct" -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
         if [[ -n "$_OP_KEY" ]]; then
