@@ -232,7 +232,8 @@ if [[ -f "$ENV_FILE" ]]; then
       dbg "op run without --account (5s timeout)"
       _OP_KEY="$(_timeout 5 op run --env-file "$ENV_FILE" --no-masking -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
     fi
-    dbg "op run finished: ${_OP_KEY:+got key}${_OP_KEY:-empty}"
+    _op_status="${_OP_KEY:+got key}"
+    dbg "op run finished: ${_op_status:-empty}"
     # If that failed, try each known account silently
     if [[ -z "$_OP_KEY" && -z "${OP_ACCOUNT:-}" ]]; then
       dbg "enumerating op accounts"
@@ -261,7 +262,8 @@ if [[ -f "$ENV_FILE" ]]; then
   fi
 fi
 MRC_API_KEY="${MRC_API_KEY:-${ANTHROPIC_API_KEY:-}}"
-dbg "API key: ${MRC_API_KEY:+set (${#MRC_API_KEY} chars)}${MRC_API_KEY:-NOT SET}"
+_key_status="${MRC_API_KEY:+set (${#MRC_API_KEY} chars)}"
+dbg "API key: ${_key_status:-NOT SET}"
 
 if [[ -z "${MRC_API_KEY:-}" ]]; then
   echo ""
