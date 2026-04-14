@@ -147,15 +147,21 @@ set -- "${args[@]+"${args[@]}"}"
 # Debug helper — prints to stderr when --verbose is set
 dbg() { $VERBOSE && echo "[mrc:debug] $*" >&2 || true; }
 
-# Portable timeout wrapper (op CLI can block waiting for biometric auth)
-if command -v timeout &>/dev/null; then
-  _timeout() { timeout "$@"; }
-elif command -v gtimeout &>/dev/null; then
-  _timeout() { gtimeout "$@"; }
-else
-  # Fallback: perl is always present on macOS. Sets SIGALRM then execs the command.
-  _timeout() { local secs="$1"; shift; perl -e 'alarm(shift @ARGV); exec @ARGV' "$secs" "$@"; }
-fi
+# Portable timeout wrapper (op CLI can block waiting for biometric auth).
+# Runs command in background, kills it after N seconds if still running.
+_timeout() {
+  local secs="$1"; shift
+  "$@" &
+  local cmd_pid=$!
+  # Watchdog: close stdout so $() doesn't block waiting for this subprocess
+  ( exec >/dev/null 2>&1; sleep "$secs" && kill "$cmd_pid" 2>/dev/null ) &
+  local wd_pid=$!
+  wait "$cmd_pid" 2>/dev/null
+  local rc=$?
+  kill "$wd_pid" 2>/dev/null
+  wait "$wd_pid" 2>/dev/null
+  return $rc
+}
 
 # --- Subcommand: mrc status ---
 if [[ "${1:-}" == "status" ]]; then
@@ -215,17 +221,18 @@ fi
 # --- Load .env early (needed for session naming in pick/sessions commands) ---
 ENV_FILE="$SCRIPT_DIR/.env"
 if [[ -f "$ENV_FILE" ]]; then
+  dbg "loading .env from $ENV_FILE"
   if grep -q 'op://' "$ENV_FILE" 2>/dev/null && command -v op &>/dev/null; then
-    dbg ".env contains op:// references, using 1Password CLI"
+    dbg ".env contains op:// references, using 1Password CLI (op=$(command -v op))"
     # Try without --account first, then prompt if it fails
     if [[ -n "${OP_ACCOUNT:-}" ]]; then
-      dbg "op run with explicit OP_ACCOUNT=$OP_ACCOUNT"
+      dbg "op run with explicit OP_ACCOUNT=$OP_ACCOUNT (5s timeout)"
       _OP_KEY="$(_timeout 5 op run --env-file "$ENV_FILE" --no-masking --account "$OP_ACCOUNT" -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
     else
-      dbg "op run without --account"
+      dbg "op run without --account (5s timeout)"
       _OP_KEY="$(_timeout 5 op run --env-file "$ENV_FILE" --no-masking -- printenv ANTHROPIC_API_KEY 2>/dev/null)" || true
     fi
-    dbg "op run result: ${_OP_KEY:+got key}${_OP_KEY:-empty}"
+    dbg "op run finished: ${_OP_KEY:+got key}${_OP_KEY:-empty}"
     # If that failed, try each known account silently
     if [[ -z "$_OP_KEY" && -z "${OP_ACCOUNT:-}" ]]; then
       dbg "enumerating op accounts"
@@ -247,12 +254,14 @@ if [[ -f "$ENV_FILE" ]]; then
       MRC_API_KEY="$_OP_KEY"
     fi
   else
+    dbg "sourcing .env directly (no op:// references)"
     set -a
     source "$ENV_FILE"
     set +a
   fi
 fi
 MRC_API_KEY="${MRC_API_KEY:-${ANTHROPIC_API_KEY:-}}"
+dbg "API key: ${MRC_API_KEY:+set (${#MRC_API_KEY} chars)}${MRC_API_KEY:-NOT SET}"
 
 if [[ -z "${MRC_API_KEY:-}" ]]; then
   echo ""
