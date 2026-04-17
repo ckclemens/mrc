@@ -124,6 +124,23 @@ if [ -n "${MRC_NOTIFY_PORT:-}" ]; then
   "
 fi
 
+# Install the default statusLine (context-usage progress bar) unless the user
+# has already configured one via /statusline.
+SETTINGS_FILE="$HOME/.claude/settings.json"
+[ -f "$SETTINGS_FILE" ] || echo '{}' > "$SETTINGS_FILE"
+node -e "
+  const fs = require('fs');
+  const s = JSON.parse(fs.readFileSync('$SETTINGS_FILE', 'utf8'));
+  if (!s.statusLine) {
+    s.statusLine = {
+      type: 'command',
+      command: '/usr/local/bin/mrc-statusline',
+      padding: 0
+    };
+    fs.writeFileSync('$SETTINGS_FILE', JSON.stringify(s, null, 2) + '\n');
+  }
+"
+
 echo "Launching Claude Code..."
 claude --dangerously-skip-permissions $RESUME_FLAG "$@"
 EXIT_CODE=$?

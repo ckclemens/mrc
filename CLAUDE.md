@@ -8,7 +8,7 @@ Mister Claude (`mrc`) is a sandboxed Docker container launcher for Claude Code w
 
 ## Architecture
 
-The system has seven components:
+The system has eight components:
 
 ### Host-side (runs on macOS/Linux)
 
@@ -28,6 +28,8 @@ The system has seven components:
 
 7. **`mrc-notify-hook.sh`** — Container-side Claude Code `Stop` hook handler. Reads the hook JSON from stdin, extracts and truncates `last_assistant_message`, and sends the repo name + summary to the host notification proxy via socat.
 
+8. **`mrc-statusline`** — Container-side Claude Code `statusLine` handler (Python). Reads the statusline JSON from stdin and renders a color-coded context-usage progress bar, 5h/7d rate-limit gauges, and the session name. Installed as the default status line by the entrypoint; users can override with `/statusline`.
+
 ## Key Design Decisions
 
 - **Container is the security boundary** — Claude runs with `--dangerously-skip-permissions` because the Docker container + firewall provide isolation, not Claude's own permission system.
@@ -39,6 +41,7 @@ The system has seven components:
 - **`.sandboxignore` (recursive)** — Can be placed anywhere in the repo tree. Each file's entries resolve relative to the directory containing it (like `.gitignore`). Files are masked with `/dev/null` (appear empty); directories get anonymous volume overlays (appear as empty dirs).
 - **Host network lockdown** — The firewall only allows traffic to the host on the dynamically assigned proxy ports. All other host services (Postgres, Redis, etc.) are unreachable from the container.
 - **Desktop notifications** — A Claude Code `Stop` hook fires on every response completion. The container-side hook script extracts a summary from the response and sends it to the host-side notification proxy, which shows a native macOS/Linux notification identifying which repo's session is ready.
+- **Default status line** — The entrypoint writes a `statusLine` entry pointing at `/usr/local/bin/mrc-statusline` only if the user hasn't already set one, so a `/statusline` customization in the persisted config volume always wins.
 - **Container labeling** — Each container is labeled with `mrc=1`, `mrc.repo`, `mrc.repo.name`, and `mrc.web` for discovery by `mrc status`.
 - **Config files (`.mrcrc`)** — Global defaults in `~/.mrcrc`, per-repo overrides in `<repo>/.mrcrc`. Both use the same format: one CLI flag per line, comments with `#`. All sources are merged (global + repo + CLI), with CLI flags taking precedence.
 - **Multi-instance support** — Multiple `mrc` instances can run against the same repo. Each gets its own config volume (`mrc-config-<hash>-2`, `-3`, etc.) and dynamically allocated proxy ports. A warning is shown when concurrent instances are detected, since they share the workspace and file edit conflicts are possible.

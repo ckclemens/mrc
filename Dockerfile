@@ -64,6 +64,9 @@ RUN chmod +x /usr/local/bin/xclip
 COPY mrc-notify-hook.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/mrc-notify-hook.sh
 
+COPY mrc-statusline /usr/local/bin/
+RUN chmod +x /usr/local/bin/mrc-statusline
+
 COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

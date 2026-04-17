@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Statusline for Mister Claude — context bar, rate limits, session name.
+
+Claude Code pipes a JSON blob to stdin on each refresh.  We use
+`context_window.used_percentage` for the bar, `rate_limits` for the
+5h/7d usage, and look up the session name from the project's
+session-names file.
+
+    [███████████░░░░░░░░░] 57% context · 5h 12% │ 7d 7% · my-session
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+
+BAR_WIDTH = 20
+
+# Claude reserves ~15% of the context window for compaction, so anything
+# above COMPACT_THRESHOLD is effectively "about to compact" territory.
+COMPACT_THRESHOLD = 77
+WARN_THRESHOLD = 60
+
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+RED = "\033[31m"
+DIM = "\033[2m"
+DIM_CYAN = "\033[2;36m"
+DIM_GREEN = "\033[2;32m"
+DIM_YELLOW = "\033[2;33m"
+DIM_RED = "\033[2;31m"
+RESET = "\033[0m"
+
+NAMES_FILE = "session-names"
+MRC_DIR = ".mrc"
+
+
+def lookup_session_name(project_dir: str, session_id: str) -> str:
+    """Look up a human-friendly session name from the session-names file."""
+    names_path = os.path.join(project_dir, MRC_DIR, NAMES_FILE)
+    try:
+        with open(names_path) as fh:
+            for line in fh:
+                if "=" in line:
+                    uuid, name = line.strip().split("=", 1)
+                    if uuid == session_id:
+                        return name
+    except OSError:
+        pass
+    return ""
+
+
+def main() -> None:
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        data = {}
+
+    # Context usage — use the pre-computed percentage when available,
+    # fall back to computing from current_usage tokens.
+    ctx = data.get("context_window") or {}
+    pct = ctx.get("used_percentage")
+    if pct is None:
+        usage = ctx.get("current_usage") or {}
+        total = (
+            (usage.get("input_tokens") or 0)
+            + (usage.get("cache_read_input_tokens") or 0)
+            + (usage.get("cache_creation_input_tokens") or 0)
+        )
+        size = ctx.get("context_window_size") or 200_000
+        pct = min(100, int(total * 100 / size)) if size else 0
+
+    pct = min(100, int(pct))
+    filled = pct * BAR_WIDTH // 100
+    bar = "\u2588" * filled + "\u2591" * (BAR_WIDTH - filled)
+
+    if pct >= COMPACT_THRESHOLD:
+        color = RED
+    elif pct >= WARN_THRESHOLD:
+        color = YELLOW
+    else:
+        color = GREEN
+
+    # Rate limits — muted colors, labels in dim cyan, values colored by level
+    limits = data.get("rate_limits") or {}
+    limit_parts = []
+    for key, label in [("five_hour", "5h"), ("seven_day", "7d")]:
+        bucket = limits.get(key)
+        if bucket:
+            lp = int(bucket.get("used_percentage") or 0)
+            if lp >= COMPACT_THRESHOLD:
+                vc = DIM_RED
+            elif lp >= WARN_THRESHOLD:
+                vc = DIM_YELLOW
+            else:
+                vc = DIM_GREEN
+            limit_parts.append(f"{DIM_CYAN}{label}{RESET} {vc}{lp}%{RESET}")
+
+    # Session name
+    project_dir = (data.get("workspace") or {}).get("project_dir") or ""
+    session_id = data.get("session_id") or ""
+    name = lookup_session_name(project_dir, session_id)
+
+    parts = [f"{color}[{bar}] {pct}% context{RESET}"]
+    if limit_parts:
+        parts.append(f" {DIM}\u2502{RESET} ".join(limit_parts))
+    if name:
+        parts.append(f"{DIM}{name}{RESET}")
+
+    sys.stdout.write(" \u00b7 ".join(parts))
+
+
+if __name__ == "__main__":
+    main()
