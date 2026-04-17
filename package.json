@@ -1,0 +1,11 @@
+{
+  "name": "mister-claude",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "mrc": "./mrc.js"
+  },
+  "scripts": {
+    "start": "node mrc.js"
+  }
+}

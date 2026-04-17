@@ -1,0 +1,98 @@
+import { HAIKU_MODEL } from '../constants.js'
+import { extractTranscript } from './transcript.js'
+import { loadNames, saveNames } from './manager.js'
+
+async function callHaiku(apiKey, messages, maxTokens = 512) {
+  const body = JSON.stringify({ model: HAIKU_MODEL, max_tokens: maxTokens, messages })
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body,
+    signal: AbortSignal.timeout(30_000),
+  })
+
+  if (resp.status === 401) {
+    process.stderr.write(
+      '\x1b[1;31m  ✦ API key rejected (401). The key may have been rotated.\x1b[0m\n' +
+      '\x1b[0;2m    Exit this session and relaunch mrc to pick up the new key.\x1b[0m\n'
+    )
+    return null
+  }
+  if (!resp.ok) return null
+
+  const result = await resp.json()
+  return (result.content || []).filter(b => b.type === 'text').map(b => b.text).join('')
+}
+
+/** Generate a session summary using Haiku. Writes to session-summaries/<uuid>.md. */
+export async function summarize(mrcDir, uuid) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return
+
+  const transcript = extractTranscript(mrcDir, uuid)
+  if (!transcript) return
+
+  const text = await callHaiku(apiKey, [{
+    role: 'user',
+    content:
+      'Summarize this Claude Code session transcript concisely. Include:\n' +
+      '1. What was accomplished (1-2 sentences)\n' +
+      '2. Key files changed (bulleted list, if any)\n' +
+      '3. Notable decisions or tradeoffs (if any)\n\n' +
+      'Keep the entire summary under 5 lines. Use markdown.\n\n' +
+      `Transcript:\n${transcript}`,
+  }])
+
+  if (text?.trim()) {
+    const { mkdirSync, writeFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const dir = join(mrcDir, 'session-summaries')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, `${uuid}.md`), text.trim() + '\n')
+  }
+}
+
+/** Generate a descriptive kebab-case session name using Haiku. */
+export async function generateName(mrcDir, uuid) {
+  const names = loadNames(mrcDir)
+  if (names[uuid]) return  // already named
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    process.stderr.write('\x1b[1;31m  ✦ Name generation skipped: no ANTHROPIC_API_KEY set\x1b[0m\n')
+    return
+  }
+
+  const transcript = extractTranscript(mrcDir, uuid, 2000)
+
+  const text = await callHaiku(apiKey, [{
+    role: 'user',
+    content:
+      'Generate a short kebab-case name (3-5 words, lowercase, hyphens) that describes ' +
+      "what this Claude Code session is about. Examples: 'android-splash-screen-hang-fix', " +
+      "'add-user-auth-middleware', 'refactor-db-connection-pool'.\n\n" +
+      'Reply with ONLY the kebab-case name, nothing else.\n\n' +
+      `Transcript:\n${transcript}`,
+  }], 30)
+
+  if (!text) return
+
+  const name = text.trim().toLowerCase().replace(/^["']|["']$/g, '')
+  if (!name || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) {
+    process.stderr.write(`\x1b[1;31m  ✦ Name generation: bad format '${name}'\x1b[0m\n`)
+    return
+  }
+
+  // Re-read in case a manual name was set while we were generating
+  const fresh = loadNames(mrcDir)
+  if (!fresh[uuid]) {
+    fresh[uuid] = name
+    saveNames(mrcDir, fresh)
+    process.stderr.write(`\x1b[1;36m  ✦ Session named → \x1b[1;33m${name}\x1b[0m\n`)
+  }
+}

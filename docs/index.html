@@ -522,7 +522,7 @@ footer a { color: var(--phosphor-dim); }
       Your code stays safe. Your databases stay unreachable. The Schwartz stays strong.
     </p>
     <div class="hero-cta">
-      <a href="#quickstart" class="btn btn-primary">Get Started</a>
+      <a href="#quickstart" class="btn btn-primary">Install</a>
       <a href="https://github.com/aisaacs/mrc" class="btn btn-ghost">View Source</a>
     </div>
   </div>
@@ -576,9 +576,8 @@ footer a { color: var(--phosphor-dim); }
         <span class="terminal-title">Terminal</span>
       </div>
       <div class="terminal-body">
-<span class="comment"># Clone it</span>
-<span class="prompt">$</span> <span class="cmd">git clone https://github.com/aisaacs/mrc.git</span>
-<span class="prompt">$</span> <span class="cmd">export PATH="$PATH:$(pwd)/mrc"</span>
+<span class="comment"># Install it</span>
+<span class="prompt">$</span> <span class="cmd">curl -fsSL https://aisaacs.github.io/mrc/install.sh | bash</span>
 
 <span class="comment"># Set your API key</span>
 <span class="prompt">$</span> <span class="cmd">export ANTHROPIC_API_KEY="sk-ant-..."</span>
@@ -602,6 +601,23 @@ footer a { color: var(--phosphor-dim); }
 <span class="output">  → Clipboard: the Schwartz can see your clipboard</span>
 <span class="output">  → Notify:    the Schwartz will alert you when ready</span>
 <span class="output">  → Firewall:  jammed (just like their radar)</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px;">
+      <h3 style="color: var(--amber); font-size: 13px; margin-bottom: 12px;">Or install from source</h3>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dot"></span>
+          <span class="terminal-dot"></span>
+          <span class="terminal-dot"></span>
+          <span class="terminal-title">Terminal</span>
+        </div>
+        <div class="terminal-body">
+<span class="prompt">$</span> <span class="cmd">git clone https://github.com/aisaacs/mrc.git</span>
+<span class="prompt">$</span> <span class="cmd">export PATH="$PATH:$(pwd)/mrc"</span>
+<span class="output">  <span class="comment"># Requires Node.js 22+</span></span>
+        </div>
       </div>
     </div>
   </div>
@@ -635,7 +651,7 @@ footer a { color: var(--phosphor-dim); }
       <div class="feature-card">
         <span class="feature-icon">&#x1f4be;</span>
         <h3>Session Management</h3>
-        <p>Auto-resume, named sessions, list/resume subcommands. AI-generated summaries on exit. Tool-miss detection.</p>
+        <p>Auto-resume, named sessions, interactive picker with <code>mrc pick</code>. AI-generated names and summaries. Tool-miss detection on exit.</p>
       </div>
 
       <div class="feature-card">
@@ -658,8 +674,8 @@ footer a { color: var(--phosphor-dim); }
 
       <div class="feature-card">
         <span class="feature-icon">&#x1f4ca;</span>
-        <h3>mrc status</h3>
-        <p>See all running Mr. Claude containers across repos with uptime, web mode, and container IDs. One command.</p>
+        <h3>Context Status Line</h3>
+        <p>Live progress bar showing context window usage, 5h/7d rate limits, and session name. Color-coded warnings as you approach compaction.</p>
       </div>
     </div>
   </div>
@@ -687,13 +703,15 @@ footer a { color: var(--phosphor-dim); }
 
         <tr><td colspan="2" class="cli-section-label">Commands</td></tr>
         <tr><td>mrc status</td><td>Show active containers across repos</td></tr>
+        <tr><td>mrc pick [path]</td><td>Interactive session picker (arrow keys)</td></tr>
         <tr><td>mrc sessions ls</td><td>List saved sessions</td></tr>
         <tr><td>mrc sessions name</td><td>Name a session</td></tr>
         <tr><td>mrc sessions resume</td><td>Resume a specific session</td></tr>
 
         <tr><td colspan="2" class="cli-section-label">Environment</td></tr>
-        <tr><td>ANTHROPIC_API_KEY</td><td>API key (also loaded from .env next to mrc script)</td></tr>
+        <tr><td>ANTHROPIC_API_KEY</td><td>API key (also loaded from .env or ~/.config/mrc/.env)</td></tr>
         <tr><td>MRC_PORT_BASE</td><td>Starting port for proxy allocation (default: 7722)</td></tr>
+        <tr><td>MRC_HOME</td><td>Override Docker context directory (advanced)</td></tr>
       </tbody>
     </table>
 
@@ -723,6 +741,17 @@ footer a { color: var(--phosphor-dim); }
     <h2>What's new</h2>
 
     <div class="changelog-section">
+      <h3>v1.0.0 &mdash; Ludicrous Speed</h3>
+      <ul>
+        <li><strong>Standalone binary</strong> &mdash; Single-file install via <code>curl | bash</code>. No Node.js required on the host.</li>
+        <li><strong>Session picker</strong> &mdash; <code>mrc pick</code> launches an interactive TUI to browse, select, or start sessions.</li>
+        <li><strong>Context status line</strong> &mdash; Live progress bar showing context window usage, 5h/7d rate limits, and session name.</li>
+        <li><strong>Auto-naming</strong> &mdash; Sessions are automatically named via Haiku API after enough conversation builds up.</li>
+        <li><strong>Node.js rewrite</strong> &mdash; Host launcher and container scripts rewritten from bash/Python to Node.js for easier maintenance.</li>
+      </ul>
+    </div>
+
+    <div class="changelog-section">
       <h3>Session Management</h3>
       <ul>
         <li><strong>Auto-resume</strong> &mdash; Re-opening a repo continues the last conversation automatically.</li>
@@ -743,18 +772,11 @@ footer a { color: var(--phosphor-dim); }
     </div>
 
     <div class="changelog-section">
-      <h3>Security</h3>
+      <h3>Security &amp; Multi-Instance</h3>
       <ul>
         <li><strong>Host network lockdown</strong> &mdash; Firewall only opens proxy ports. Your local Postgres, Redis, and everything else on the host are blocked.</li>
-      </ul>
-    </div>
-
-    <div class="changelog-section">
-      <h3>Multi-Instance Support</h3>
-      <ul>
         <li><strong>Concurrent sessions</strong> &mdash; Multiple instances per repo, each with its own config volume and fresh session.</li>
         <li><strong>Dynamic port allocation</strong> &mdash; Each instance gets free ports starting from <code>MRC_PORT_BASE</code>.</li>
-        <li><strong>Collision warning</strong> &mdash; Warning when a second instance launches against an active repo.</li>
       </ul>
     </div>
 
@@ -764,7 +786,6 @@ footer a { color: var(--phosphor-dim); }
         <li><strong><code>.mrcrc</code> config files</strong> &mdash; Global (<code>~/.mrcrc</code>) and per-repo defaults.</li>
         <li><strong>Recursive <code>.sandboxignore</code></strong> &mdash; Place anywhere in the tree, entries resolve relative to their directory.</li>
         <li><strong><code>mrc status</code></strong> &mdash; See all running containers with uptime and flags.</li>
-        <li><strong>Container labeling</strong> &mdash; Tagged with <code>mrc.*</code> labels for discoverability.</li>
       </ul>
     </div>
   </div>

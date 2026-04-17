@@ -58,14 +58,17 @@ RUN chmod +x /usr/local/bin/init-firewall.sh \
     && echo 'coder ALL=(root) NOPASSWD: SETENV: /usr/local/bin/init-firewall.sh' > /etc/sudoers.d/coder-firewall \
     && chmod 0440 /etc/sudoers.d/coder-firewall
 
+# Clipboard shim (stays bash — mimics xclip interface)
 COPY clipboard-shim.sh /usr/local/bin/xclip
 RUN chmod +x /usr/local/bin/xclip
 
-COPY mrc-notify-hook.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/mrc-notify-hook.sh
-
-COPY mrc-statusline /usr/local/bin/
-RUN chmod +x /usr/local/bin/mrc-statusline
+# Container-side Node scripts
+COPY container/mrc-notify-hook.js /usr/local/bin/
+COPY container/mrc-statusline.js /usr/local/bin/
+COPY container/container-setup.js /usr/local/bin/
+RUN chmod +x /usr/local/bin/mrc-notify-hook.js \
+    /usr/local/bin/mrc-statusline.js \
+    /usr/local/bin/container-setup.js
 
 COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh

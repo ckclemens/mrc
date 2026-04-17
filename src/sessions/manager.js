@@ -1,0 +1,142 @@
+import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
+import { join, basename } from 'node:path'
+
+/** Return sessions sorted newest-first as [{ uuid, lastUpdated, preview }, ...]. */
+export function getSessions(mrcDir) {
+  const sessions = []
+  let files
+  try { files = readdirSync(mrcDir).filter(f => f.endsWith('.jsonl')) } catch { return [] }
+
+  for (const file of files) {
+    const uuid = basename(file, '.jsonl')
+    let preview = ''
+    let lastTs = ''
+
+    try {
+      const raw = readFileSync(join(mrcDir, file), 'utf8')
+      for (const line of raw.split('\n')) {
+        if (!line) continue
+        let obj
+        try { obj = JSON.parse(line) } catch { continue }
+        if (obj.timestamp) lastTs = obj.timestamp
+        if (!preview && obj.type === 'user') {
+          let content = obj.message?.content || ''
+          if (Array.isArray(content)) {
+            content = content.find(c => c.type === 'text')?.text || ''
+          }
+          preview = content.slice(0, 60).replace(/\n/g, ' ')
+          if (content.length > 60) preview += '...'
+        }
+      }
+      if (lastTs) sessions.push({ uuid, lastUpdated: lastTs, preview })
+    } catch {}
+  }
+
+  sessions.sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated))
+  return sessions
+}
+
+/** Load session-names file into an object { uuid: name }. */
+export function loadNames(mrcDir) {
+  const names = {}
+  const file = join(mrcDir, 'session-names')
+  try {
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      const eq = line.indexOf('=')
+      if (eq > 0) {
+        const uuid = line.slice(0, eq)
+        const name = line.slice(eq + 1)
+        if (uuid && name) names[uuid] = name
+      }
+    }
+  } catch {}
+  return names
+}
+
+/** Save session-names file. */
+export function saveNames(mrcDir, names) {
+  const file = join(mrcDir, 'session-names')
+  const content = Object.entries(names).map(([uuid, name]) => `${uuid}=${name}`).join('\n') + '\n'
+  writeFileSync(file, content)
+}
+
+/** Resolve a name or list number to a UUID. Returns UUID or null. */
+export function resolve(mrcDir, query) {
+  const sessions = getSessions(mrcDir)
+  const names = loadNames(mrcDir)
+
+  // Try as a number
+  const idx = parseInt(query, 10)
+  if (!isNaN(idx) && idx >= 1 && idx <= sessions.length) {
+    return sessions[idx - 1].uuid
+  }
+
+  // Try as exact name
+  for (const s of sessions) {
+    if (names[s.uuid] === query) return s.uuid
+  }
+
+  // Try as substring
+  for (const s of sessions) {
+    const name = names[s.uuid] || ''
+    if (name && name.toLowerCase().includes(query.toLowerCase())) return s.uuid
+  }
+
+  // Try as raw UUID
+  for (const s of sessions) {
+    if (s.uuid === query) return s.uuid
+  }
+
+  return null
+}
+
+/** Get first line of a session summary, or null. */
+export function getSummaryPreview(mrcDir, uuid) {
+  const file = join(mrcDir, 'session-summaries', `${uuid}.md`)
+  try {
+    const first = readFileSync(file, 'utf8').split('\n')[0].trim().replace(/^#+\s*/, '')
+    if (first) return first.slice(0, 60) + (first.length > 60 ? '...' : '')
+  } catch {}
+  return null
+}
+
+/** Format timestamp for display. */
+function formatTs(ts) {
+  try {
+    return new Date(ts).toISOString().replace('T', ' ').slice(0, 19)
+  } catch {
+    return ts.slice(0, 19)
+  }
+}
+
+/** Print session list to stdout. */
+export function listSessions(mrcDir) {
+  const sessions = getSessions(mrcDir)
+  if (!sessions.length) {
+    console.log(`No sessions found in ${mrcDir}`)
+    return
+  }
+  const names = loadNames(mrcDir)
+  console.log(`  ${'#'.padEnd(5)} ${'Last Used'.padEnd(22)} ${'Name'.padEnd(80)} Preview`)
+  console.log(`  ${'—'.padEnd(5)} ${'—————————'.padEnd(22)} ${'————'.padEnd(80)} ———————`)
+  for (let i = 0; i < sessions.length; i++) {
+    const { uuid, lastUpdated, preview } = sessions[i]
+    const name = names[uuid] || '(unnamed)'
+    const summary = getSummaryPreview(mrcDir, uuid)
+    const display = summary || preview
+    console.log(`  ${String(i + 1).padEnd(5)} ${formatTs(lastUpdated).padEnd(22)} ${name.padEnd(80)} ${display}`)
+  }
+}
+
+/** Name a session. */
+export function nameSession(mrcDir, name, target = '1') {
+  const uuid = resolve(mrcDir, target)
+  if (!uuid) {
+    process.stderr.write(`Session not found: ${target}\nRun 'mrc sessions ls' to list available sessions.\n`)
+    process.exit(1)
+  }
+  const names = loadNames(mrcDir)
+  names[uuid] = name
+  saveNames(mrcDir, names)
+  console.log(`Named session ${uuid} → "${name}"`)
+}

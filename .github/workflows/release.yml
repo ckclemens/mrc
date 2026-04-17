@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build binaries and tarballs
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Docker context files to include in every tarball
+          CONTEXT_FILES=(
+            Dockerfile
+            .dockerignore
+            entrypoint.sh
+            init-firewall.sh
+            clipboard-shim.sh
+            container/mrc-notify-hook.js
+            container/mrc-statusline.js
+            container/container-setup.js
+          )
+
+          for target in bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-linux-arm64; do
+            # Parse os-arch from target name (bun-<os>-<arch>)
+            os=$(echo "$target" | cut -d- -f2)
+            arch=$(echo "$target" | cut -d- -f3)
+            name="mrc-${VERSION}-${os}-${arch}"
+            dist="dist/${name}"
+
+            echo "--- Building ${name} ---"
+
+            # Compile binary
+            mkdir -p "${dist}/bin"
+            bun build --compile --target="${target}" ./mrc.js --outfile "${dist}/bin/mrc"
+
+            # Copy Docker context
+            mkdir -p "${dist}/share/mrc/container"
+            for f in "${CONTEXT_FILES[@]}"; do
+              cp "$f" "${dist}/share/mrc/${f}"
+            done
+
+            # Create tarball (paths relative to dist/<name>/ so it extracts cleanly into a prefix)
+            tar -czf "dist/${name}.tar.gz" -C "${dist}" bin share
+          done
+
+          ls -lh dist/*.tar.gz
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --generate-notes \
+            dist/*.tar.gz
