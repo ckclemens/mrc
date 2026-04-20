@@ -1,1 +1,17 @@
+# Secrets & credentials
 .env
+.env.local
+.env.production
+.env.staging
+.env.development
+
+# Keys & certs
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Config with secrets
+.mrcrc

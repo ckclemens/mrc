@@ -8,7 +8,7 @@
 #
 # Options:
 #   -r, --rebuild  Force a full image rebuild (no cache)
-#   -v, --verbose  Show Colima and Docker output (useful for debugging)
+#   -v, --verbose  Show Docker output (useful for debugging)
 #   -n, --new [name]     Start a new conversation (optionally named)
 #   -w, --web            Allow outbound HTTPS to any host (for web search/fetch)
 #   --no-summary         Skip AI session summary on exit
@@ -171,9 +171,6 @@ _timeout() {
 # --- Subcommand: mrc status ---
 if [[ "${1:-}" == "status" ]]; then
   # Ensure Docker is reachable
-  if command -v colima &>/dev/null && [[ -z "${DOCKER_HOST:-}" ]]; then
-    export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
-  fi
   if ! docker info &>/dev/null 2>&1; then
     echo "Docker is not running." >&2
     exit 1
@@ -419,25 +416,9 @@ for _var in ${!MRC_VIDEO_*}; do
   ENV_FLAGS+=(-e "$_var=${!_var}")
 done
 
-# Ensure Colima is running
-STARTED_COLIMA=false
-if command -v colima &>/dev/null; then
-  # Point docker at Colima's socket if not already configured
-  if [[ -z "${DOCKER_HOST:-}" ]]; then
-    export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
-  fi
-  if ! colima status &>/dev/null 2>&1; then
-    echo "🎩 Preparing ship for Ludicrous Speed..."
-    COLIMA_FLAGS=(--vm-type vz --mount-type virtiofs --cpu 4 --memory 8)
-    colima start "${COLIMA_FLAGS[@]}" 2>"$QUIET" &
-    spinner $!
-    wait $!
-    echo "  ✓ Ship ready. All bleeps, sweeps, and creeps accounted for."
-    STARTED_COLIMA=true
-  fi
-elif ! docker info &>/dev/null 2>&1; then
-  echo "We've lost the bleeps, the sweeps, AND the creeps." >&2
-  echo "Error: Docker is not running and Colima is not installed." >&2
+# Check Docker daemon is available (OrbStack manages this automatically)
+if ! docker info > /dev/null 2>&1; then
+  echo "Docker is not running. Open OrbStack from your Applications folder and try again." >&2
   exit 1
 fi
 
@@ -445,11 +426,6 @@ fi
 cleanup() {
   [[ -n "${CLIP_PID:-}" ]] && kill "$CLIP_PID" 2>/dev/null || true
   [[ -n "${NOTIFY_PID:-}" ]] && kill "$NOTIFY_PID" 2>/dev/null || true
-  if ${STARTED_COLIMA:-false}; then
-    echo ""
-    echo "🎩 Goodbye, Lone Starr."
-    colima stop 2>"$QUIET"
-  fi
 }
 trap cleanup EXIT
 
