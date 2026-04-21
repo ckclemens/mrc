@@ -310,9 +310,9 @@ if [[ "${1:-}" == "pick" ]]; then
   dbg "running: python3 $SESSIONS pick $REPO_PATH/.mrc"
   PICK_RESULT="$(ANTHROPIC_API_KEY="${MRC_API_KEY}" python3 "$SESSIONS" pick "$REPO_PATH/.mrc")"
   dbg "pick result: $PICK_RESULT"
+  ALLOW_WEB=true
   if [[ "$PICK_RESULT" == "NEW" ]]; then
     NEW_SESSION=true
-    ALLOW_WEB=true
   else
     RESUME_SESSION="$PICK_RESULT"
   fi
@@ -358,9 +358,9 @@ if [[ "${1:-}" == "sessions" ]]; then
       REPO_PATH="${1:-.}"
       REPO_PATH="$(cd "$REPO_PATH" && pwd)"
       PICK_RESULT="$(ANTHROPIC_API_KEY="${MRC_API_KEY}" python3 "$SESSIONS" pick "$REPO_PATH/.mrc")"
+      ALLOW_WEB=true
       if [[ "$PICK_RESULT" == "NEW" ]]; then
         NEW_SESSION=true
-        ALLOW_WEB=true
       else
         RESUME_SESSION="$PICK_RESULT"
       fi
