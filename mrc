@@ -422,7 +422,7 @@ if ! docker info > /dev/null 2>&1; then
   exit 1
 fi
 
-# Cleanup on exit: stop clipboard proxy, optionally stop Colima
+# Cleanup on exit: stop clipboard and notification proxies
 cleanup() {
   [[ -n "${CLIP_PID:-}" ]] && kill "$CLIP_PID" 2>/dev/null || true
   [[ -n "${NOTIFY_PID:-}" ]] && kill "$NOTIFY_PID" 2>/dev/null || true
