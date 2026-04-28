@@ -33,6 +33,11 @@ if [ -f /tmp/mrc-resume-flag ]; then
   rm -f /tmp/mrc-resume-flag
 fi
 
+if [ "${MRC_DAEMON:-}" = "1" ]; then
+  echo "READY"
+  exec tail -f /dev/null
+fi
+
 echo "Launching Claude Code..."
 claude --dangerously-skip-permissions $RESUME_FLAG "$@"
 EXIT_CODE=$?

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{{NONCE}}'; img-src data:;">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--vscode-editor-font-family, 'SF Mono', 'Fira Code', 'Cascadia Code', monospace);
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  display: flex; flex-direction: column; height: 100vh;
+  line-height: 1.6;
+}
+
+/* --- messages --- */
+#messages {
+  flex: 1; overflow-y: auto; padding: 12px 0;
+}
+.msg { padding: 6px 16px; border-left: 2px solid transparent; }
+.msg.user { border-left-color: #4a6a8a; background: rgba(70,130,180,0.04); }
+.msg.assistant { border-left-color: #4ec9b0; }
+.role {
+  font-size: 11px; font-weight: 700; margin-bottom: 2px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.msg.user .role { color: #5a8ab5; }
+.msg.assistant .role { color: #4ec9b0; }
+.content { white-space: pre-wrap; word-wrap: break-word; color: #ccc; }
+.content code {
+  background: rgba(255,255,255,0.06); color: #d4a56a;
+  padding: 1px 5px; font-size: 12px;
+  font-family: inherit;
+}
+.content pre {
+  background: rgba(0,0,0,0.25); border: 1px solid #2a2a2a;
+  padding: 8px 10px; overflow-x: auto; margin: 6px 0;
+  white-space: pre; font-size: 12px;
+}
+.content pre code { background: none; padding: 0; color: #ccc; }
+.tool-use {
+  font-size: 11px; color: #666; padding: 1px 0;
+}
+.tool-use::before { content: '$ '; color: #555; }
+
+/* --- thinking indicator (in bubble) --- */
+.thinking {
+  color: #888; font-size: 12px; padding: 4px 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.thinking .sparkle { font-size: 14px; }
+.thinking-text { color: #777; }
+.thinking-timer { color: #555; font-size: 11px; margin-left: 4px; }
+.avatar {
+  width: 18px; height: 18px; vertical-align: middle;
+  margin-right: 4px; border-radius: 3px;
+}
+
+/* --- input area --- */
+#input-wrap {
+  border-top: 1px solid #2a2a2a; padding: 8px 12px;
+  background: rgba(0,0,0,0.1);
+}
+#context-bar {
+  display: none; background: rgba(0,0,0,0.2);
+  border: 1px solid #333; padding: 6px 8px; margin-bottom: 6px;
+  font-size: 11px; max-height: 60px; overflow: auto;
+  white-space: pre-wrap; position: relative; color: #888;
+}
+#context-bar.active { display: block; }
+#context-dismiss {
+  position: absolute; top: 2px; right: 4px; cursor: pointer;
+  color: #555; font-size: 13px; background: none; border: none;
+  padding: 2px 4px;
+}
+#context-dismiss:hover { color: #aaa; }
+#input-row { display: flex; gap: 6px; align-items: flex-end; }
+#prompt-char {
+  color: #4ec9b0; font-weight: bold; padding-bottom: 7px;
+  font-size: 14px; user-select: none;
+}
+#input {
+  flex: 1; background: transparent;
+  color: var(--vscode-foreground);
+  border: 1px solid #333; padding: 6px 8px;
+  font-family: inherit; font-size: 13px; resize: none;
+  min-height: 32px; max-height: 200px;
+}
+#input:focus { outline: none; border-color: #4ec9b0; }
+#input::placeholder { color: #444; }
+button {
+  background: transparent; color: #4ec9b0;
+  border: 1px solid #333; padding: 6px 14px;
+  cursor: pointer; font-family: inherit; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+button:hover { border-color: #4ec9b0; background: rgba(78,201,176,0.08); }
+button.secondary { color: #888; }
+button.secondary:hover { border-color: #888; }
+
+/* --- bottom status bar --- */
+#status {
+  padding: 4px 16px; font-size: 11px; min-height: 18px;
+  color: #666; display: flex; align-items: center; gap: 6px;
+  border-top: 1px solid #1a1a1a;
+}
+#status:empty { padding: 0; min-height: 0; border: none; }
+.sparkle {
+  display: inline-block;
+  background: linear-gradient(135deg, #f0c040, #e07020, #f0c040);
+  background-size: 200% 200%;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 1.5s ease-in-out infinite;
+  font-size: 13px;
+}
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+#status .timer { opacity: 0.5; }
+
+/* --- context bar (bottom) --- */
+#context-bar-top {
+  display: none; padding: 4px 12px; font-size: 11px;
+  color: #7a7a7a;
+  border-top: 1px solid #2a2a2a;
+  background: rgba(0,0,0,0.15);
+}
+#context-bar-top.active { display: flex; align-items: center; gap: 8px; }
+#ctx-bar-wrap {
+  flex: 1; height: 4px; background: #1a1a1a; overflow: hidden;
+}
+#ctx-bar {
+  height: 100%;
+  background: #4ec9b0;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+#ctx-bar.warn { background: #d4a020; }
+#ctx-bar.danger { background: #c04040; }
+#ctx-label { white-space: nowrap; color: #666; }
+
+#empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  color: #444; font-size: 12px; text-align: center; padding: 20px;
+}
+#empty kbd {
+  background: rgba(255,255,255,0.06); padding: 2px 6px;
+  border: 1px solid #333; color: #888;
+}
+</style>
+</head>
+<body>
+<div id="messages">
+  <div id="empty"><kbd>Cmd+Shift+L</kbd> send selection &middot; <kbd>Cmd+Shift+;</kbd> switch session</div>
+</div>
+<div id="input-wrap">
+  <div id="context-bar"><button id="context-dismiss">&times;</button><span id="context-text"></span></div>
+  <div id="input-row">
+    <span id="prompt-char">&gt;</span>
+    <textarea id="input" rows="1" placeholder="..."></textarea>
+    <button id="send-btn">send</button>
+    <button id="cancel-btn" class="secondary" style="display:none">stop</button>
+  </div>
+</div>
+<div id="status"></div>
+<div id="context-bar-top">
+  <div id="ctx-bar-wrap"><div id="ctx-bar" style="width:0%"></div></div>
+  <span id="ctx-label"></span>
+</div>
+
+<script nonce="{{NONCE}}">
+const vscode = acquireVsCodeApi()
+const messagesEl = document.getElementById('messages')
+const emptyEl = document.getElementById('empty')
+const statusEl = document.getElementById('status')
+const inputEl = document.getElementById('input')
+const sendBtn = document.getElementById('send-btn')
+const cancelBtn = document.getElementById('cancel-btn')
+const contextBar = document.getElementById('context-bar')
+const contextText = document.getElementById('context-text')
+const contextDismiss = document.getElementById('context-dismiss')
+const ctxBarTop = document.getElementById('context-bar-top')
+const ctxBar = document.getElementById('ctx-bar')
+const ctxLabel = document.getElementById('ctx-label')
+
+var avatarUri = '{{AVATAR_URI}}'
+var CTX_WINDOW = 200000
+let streaming = false
+let pendingContext = ''
+let pendingImages = []
+let currentMsg = null
+let hasMessages = false
+let timerStart = 0
+let timerInterval = null
+let lastActivity = ''
+let thinkingDur = 0
+let tokenCount = 0
+
+inputEl.addEventListener('input', autoResize)
+inputEl.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+})
+inputEl.addEventListener('paste', function(e) {
+  var items = e.clipboardData && e.clipboardData.items
+  if (!items) return
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image/') === 0) {
+      e.preventDefault()
+      var blob = items[i].getAsFile()
+      var reader = new FileReader()
+      reader.onload = function() {
+        var base64 = reader.result.split(',')[1]
+        vscode.postMessage({ type: 'pasteImage', data: base64 })
+      }
+      reader.readAsDataURL(blob)
+      return
+    }
+  }
+})
+sendBtn.addEventListener('click', send)
+cancelBtn.addEventListener('click', function() { vscode.postMessage({ type: 'cancel' }) })
+contextDismiss.addEventListener('click', function() { pendingContext = ''; pendingImages = []; contextBar.className = '' })
+
+function autoResize() {
+  inputEl.style.height = 'auto'
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px'
+}
+
+function send() {
+  var text = inputEl.value.trim()
+  if (!text && !pendingContext && !pendingImages.length) return
+  if (pendingImages.length) {
+    var imgRefs = pendingImages.map(function(p) { return '[image: ' + p + ']' }).join('\n')
+    text = imgRefs + (text ? '\n\n' + text : '\n\nDescribe this image.')
+    pendingImages = []
+  }
+  if (pendingContext) {
+    text = pendingContext + (text ? '\n\n' + text : '')
+    pendingContext = ''
+  }
+  contextBar.className = ''
+  inputEl.value = ''
+  inputEl.style.height = 'auto'
+  vscode.postMessage({ type: 'send', text: text })
+}
+
+function addMsg(role, text) {
+  if (!hasMessages) { emptyEl.style.display = 'none'; hasMessages = true }
+  var el = document.createElement('div')
+  el.className = 'msg ' + role
+  var roleEl = document.createElement('div')
+  roleEl.className = 'role'
+  if (role === 'assistant' && avatarUri) {
+    var img = document.createElement('img')
+    img.src = avatarUri
+    img.className = 'avatar'
+    roleEl.appendChild(img)
+  }
+  roleEl.appendChild(document.createTextNode(role === 'user' ? 'you' : 'mr. claude'))
+  var contentEl = document.createElement('div')
+  contentEl.className = 'content'
+  contentEl.setAttribute('data-raw', text || '')
+  if (text) contentEl.innerHTML = md(text)
+  el.appendChild(roleEl)
+  el.appendChild(contentEl)
+  messagesEl.appendChild(el)
+  toBottom()
+  return el
+}
+
+function toBottom() { messagesEl.scrollTop = messagesEl.scrollHeight }
+
+function setStreaming(v) {
+  streaming = v
+  cancelBtn.style.display = v ? '' : 'none'
+}
+
+function startTimer(activity) {
+  if (!timerInterval) {
+    timerStart = Date.now()
+    timerInterval = setInterval(renderStatus, 1000)
+  }
+  lastActivity = activity || lastActivity || 'Thinking'
+  renderStatus()
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null }
+  statusEl.innerHTML = ''
+}
+
+function renderStatus() {
+  var elapsed = Math.floor((Date.now() - timerStart) / 1000)
+  var timeStr = elapsed >= 60 ? Math.floor(elapsed / 60) + 'm ' + (elapsed % 60) + 's' : elapsed + 's'
+  var parts = [timeStr]
+  if (tokenCount > 0) parts.push('↓ ' + (tokenCount >= 1000 ? (tokenCount / 1000).toFixed(1) + 'k' : tokenCount) + ' tokens')
+  if (thinkingDur > 0) parts.push('thought for ' + thinkingDur + 's')
+  var timerEl = currentMsg && currentMsg.querySelector('.thinking-timer')
+  if (timerEl) {
+    timerEl.textContent = parts.join(' · ')
+    statusEl.innerHTML = ''
+  } else {
+    statusEl.innerHTML = '<span class="sparkle">&#10022;</span> <span class="timer">' + parts.join(' · ') + '</span>'
+  }
+}
+
+function updateThinking(text) {
+  if (!currentMsg) return
+  var el = currentMsg.querySelector('.thinking-text')
+  if (el) el.textContent = text || 'Thinking'
+}
+
+window.addEventListener('message', function(e) {
+  var m = e.data
+  switch (m.type) {
+    case 'ready':
+      stopTimer()
+      inputEl.disabled = false
+      inputEl.focus()
+      break
+    case 'history':
+      for (var hi = 0; hi < m.messages.length; hi++) {
+        addMsg(m.messages[hi].role, m.messages[hi].text)
+      }
+      toBottom()
+      break
+    case 'userMessage':
+      addMsg('user', m.text)
+      thinkingDur = 0
+      tokenCount = 0
+      startTimer('Thinking')
+      break
+    case 'assistantStart':
+      currentMsg = addMsg('assistant', '')
+      currentMsg.querySelector('.content').innerHTML = '<div class="thinking"><span class="sparkle">&#10022;</span> <span class="thinking-text">Thinking</span> <span class="thinking-timer"></span></div>'
+      setStreaming(true)
+      break
+    case 'textDelta':
+      if (currentMsg) {
+        var c = currentMsg.querySelector('.content')
+        var th = c.querySelector('.thinking')
+        if (th) th.remove()
+        var raw = c.getAttribute('data-raw') + m.text
+        c.setAttribute('data-raw', raw)
+        c.innerHTML = md(raw)
+        toBottom()
+      }
+      break
+    case 'toolUse':
+      startTimer(m.name)
+      if (currentMsg) {
+        var c2 = currentMsg.querySelector('.content')
+        var t = document.createElement('div')
+        t.className = 'tool-use'
+        t.textContent = m.name
+        var thEl = c2.querySelector('.thinking')
+        if (thEl) c2.insertBefore(t, thEl)
+        else c2.appendChild(t)
+        toBottom()
+      }
+      break
+    case 'done':
+      if (currentMsg) {
+        var leftover = currentMsg.querySelector('.thinking')
+        if (leftover) leftover.remove()
+        var dc = currentMsg.querySelector('.content')
+        if (dc && !dc.getAttribute('data-raw').trim() && !dc.querySelector('.tool-use')) {
+          dc.innerHTML = '<span style="color:#555;font-style:italic">(no response)</span>'
+        }
+      }
+      currentMsg = null
+      setStreaming(false)
+      stopTimer()
+      inputEl.focus()
+      break
+    case 'stats':
+      thinkingDur = m.thinkingDuration || 0
+      tokenCount = m.inputTokens || 0
+      if (m.inputTokens || m.outputTokens) updateCtxBar(m.inputTokens, m.outputTokens)
+      if (timerInterval) renderStatus()
+      break
+    case 'toolDetail':
+      if (currentMsg) {
+        var tools = currentMsg.querySelectorAll('.tool-use')
+        if (tools.length) tools[tools.length - 1].textContent = m.detail
+      }
+      break
+    case 'status':
+      if (m.text) {
+        startTimer(m.text)
+        updateThinking(m.text)
+      } else {
+        stopTimer()
+      }
+      break
+    case 'error':
+      stopTimer()
+      statusEl.textContent = m.text || ''
+      setStreaming(false)
+      break
+    case 'setContext':
+      pendingContext = m.text
+      contextText.textContent = m.text.length > 300 ? m.text.slice(0, 300) + '…' : m.text
+      contextBar.className = 'active'
+      inputEl.focus()
+      break
+    case 'imageSaved':
+      pendingImages.push(m.path)
+      var label = pendingImages.length + ' image' + (pendingImages.length > 1 ? 's' : '') + ' attached'
+      contextText.textContent = label
+      contextBar.className = 'active'
+      inputEl.focus()
+      break
+    case 'usage':
+      updateCtxBar(m.input, m.output)
+      break
+    case 'result':
+      if (m.usage) updateCtxBar(m.usage.input_tokens, m.usage.output_tokens)
+      break
+    case 'model':
+      if (m.model && m.model.includes('opus')) CTX_WINDOW = 200000
+      else if (m.model && m.model.includes('haiku')) CTX_WINDOW = 200000
+      else CTX_WINDOW = 200000
+      break
+    case 'clear':
+      messagesEl.innerHTML = '<div id="empty" style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--vscode-descriptionForeground);font-size:14px;text-align:center;padding:20px">Session switched. Type a message to begin.</div>'
+      hasMessages = false
+      ctxBarTop.className = ''
+      ctxBar.style.width = '0%'
+      ctxLabel.textContent = ''
+      break
+  }
+})
+
+function updateCtxBar(input, output) {
+  var total = (input || 0) + (output || 0)
+  if (!total) return
+  var pct = Math.min(100, Math.round(total / CTX_WINDOW * 100))
+  ctxBar.style.width = pct + '%'
+  ctxBar.className = pct > 80 ? 'danger' : pct > 60 ? 'warn' : ''
+  ctxLabel.textContent = Math.round(total / 1000) + 'k / ' + Math.round(CTX_WINDOW / 1000) + 'k'
+  ctxBarTop.className = 'active'
+}
+
+function md(text) {
+  if (!text) return ''
+  var h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  h = h.replace(/```(\w*)\n([\s\S]*?)```/g, function(_, lang, code) {
+    return '<pre><code>' + code + '</code></pre>'
+  })
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>')
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  return h
+}
+</script>
+</body>
+</html>

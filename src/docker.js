@@ -68,9 +68,9 @@ export function volumeName(repoPath, instanceId) {
 /** Run the Docker container. Returns a promise that resolves to the exit code.
  *  Uses spawn (not execFileSync) so the event loop stays free for the
  *  clipboard and notification proxy servers running in the same process. */
-export function runContainer({ repoPath, envFlags, volumes, claudeArgs, allowWeb }) {
+export function runContainer({ repoPath, envFlags, volumes, claudeArgs, allowWeb, json }) {
   const args = [
-    'run', '--rm', '-it', '--init',
+    'run', '--rm', ...(json ? [] : ['-it']), '--init',
     '--cap-add=NET_ADMIN',
     '--cap-add=NET_RAW',
     '--add-host=host.docker.internal:host-gateway',
@@ -81,14 +81,47 @@ export function runContainer({ repoPath, envFlags, volumes, claudeArgs, allowWeb
     ...envFlags,
     ...volumes,
     IMAGE_NAME,
+    ...(json ? ['--output-format', 'stream-json'] : []),
     ...claudeArgs,
   ]
 
   return new Promise(resolve => {
-    const child = spawn('docker', args, { stdio: 'inherit' })
+    const child = spawn('docker', args, { stdio: json ? ['pipe', 'pipe', 'pipe'] : 'inherit' })
+    if (json) {
+      child.stdout.pipe(process.stdout)
+      child.stderr.pipe(process.stderr)
+      process.stdin.pipe(child.stdin)
+    }
     child.on('close', code => resolve(code ?? 1))
     child.on('error', () => resolve(1))
   })
+}
+
+/** Start a daemon container (detached). Returns the container ID. */
+export function startDaemon({ repoPath, envFlags, volumes, allowWeb }) {
+  const args = [
+    'run', '-d', '--rm', '--init',
+    '--cap-add=NET_ADMIN', '--cap-add=NET_RAW',
+    '--add-host=host.docker.internal:host-gateway',
+    '--label', 'mrc=1',
+    '--label', `mrc.repo=${repoPath}`,
+    '--label', `mrc.repo.name=${basename(repoPath)}`,
+    '--label', `mrc.web=${!!allowWeb}`,
+    '-e', 'MRC_DAEMON=1',
+    ...envFlags, ...volumes,
+    IMAGE_NAME,
+  ]
+  return execFileSync('docker', args, { encoding: 'utf8' }).trim()
+}
+
+/** Run claude inside a running daemon container. Returns the spawned child process. */
+export function execInContainer(containerId, claudeArgs) {
+  return spawn('docker', [
+    'exec', '-i', containerId,
+    'claude', '--dangerously-skip-permissions', '--continue',
+    '--output-format', 'stream-json',
+    ...claudeArgs,
+  ], { stdio: ['pipe', 'pipe', 'pipe'] })
 }
 
 /** Show active mrc containers (mrc status). */

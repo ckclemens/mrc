@@ -1,0 +1,61 @@
+{
+  "name": "mrc-vscode",
+  "displayName": "Mister Claude",
+  "description": "Sandboxed Claude Code chat panel powered by mrc",
+  "version": "0.0.1",
+  "publisher": "mrc",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["AI"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "mrc.openChat",
+        "title": "MRC: Open Chat"
+      },
+      {
+        "command": "mrc.sendSelection",
+        "title": "MRC: Send Selection to Chat"
+      },
+      {
+        "command": "mrc.pickSession",
+        "title": "MRC: Switch Session"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "mrc.openChat",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m"
+      },
+      {
+        "command": "mrc.sendSelection",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l"
+      },
+      {
+        "command": "mrc.pickSession",
+        "key": "ctrl+shift+;",
+        "mac": "cmd+shift+;"
+      }
+    ],
+    "configuration": {
+      "title": "Mister Claude",
+      "properties": {
+        "mrc.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to mrc.js (leave empty to auto-detect from extension location)"
+        },
+        "mrc.extraArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra arguments to pass to mrc (e.g. [\"--web\"])"
+        }
+      }
+    }
+  }
+}

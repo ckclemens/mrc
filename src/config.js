@@ -81,8 +81,10 @@ export function parseArgs(argv) {
   const config = {
     verbose: false,
     allowWeb: false,
+    daemon: false,
     newSession: false,
     newSessionName: '',
+    json: false,
     noNotify: false,
     noSound: false,
     noSummary: false,
@@ -108,6 +110,8 @@ export function parseArgs(argv) {
       case '--no-summary': config.noSummary = true; break
       case '-r': case '--rebuild': config.rebuild = true; break
       case '-v': case '--verbose': config.verbose = true; break
+      case '--daemon': config.daemon = true; break
+      case '-j': case '--json': config.json = true; break
       case '-w': case '--web': config.allowWeb = true; break
       default: remaining.push(arg)
     }

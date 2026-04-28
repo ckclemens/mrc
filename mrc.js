@@ -12,7 +12,7 @@ import { BANNER } from './src/constants.js'
 import { setVerbose, dbg } from './src/output.js'
 import { readMrcrc, loadEnv, parseArgs } from './src/config.js'
 import { ensureDocker } from './src/colima.js'
-import { buildImage, checkImageAge, getExistingCount, volumeName, runContainer, showStatus } from './src/docker.js'
+import { buildImage, checkImageAge, getExistingCount, volumeName, runContainer, startDaemon, showStatus } from './src/docker.js'
 import { processSandboxignores } from './src/sandboxignore.js'
 import { findFreePort } from './src/ports.js'
 import { startClipboardProxy } from './src/proxies/clipboard-proxy.js'
@@ -50,6 +50,8 @@ if (help) {
 Options:
   -r, --rebuild        Force a full image rebuild (no cache)
   -v, --verbose        Show Colima and Docker output (useful for debugging)
+  --daemon             Start container in background and print container ID
+  -j, --json           Stream JSON output instead of interactive TTY (for embedding)
   -n, --new [name]     Start a new conversation (optionally named)
   -w, --web            Allow outbound HTTPS to any host (for web search/fetch)
   --no-summary         Skip AI session summary on exit
@@ -251,6 +253,16 @@ for (const key of Object.keys(process.env)) {
   if (key.startsWith('MRC_VIDEO_')) envFlags.push('-e', `${key}=${process.env[key]}`)
 }
 
+// Daemon mode: start container in background, print container ID, exit
+if (config.daemon) {
+  const containerId = startDaemon({ repoPath, envFlags, volumes, allowWeb: config.allowWeb })
+  process.stdout.write(containerId + '\n')
+  process.removeAllListeners('exit')
+  process.removeAllListeners('SIGINT')
+  process.removeAllListeners('SIGTERM')
+  process.exit(0)
+}
+
 // Start proxies
 const portBase = Number(process.env.MRC_PORT_BASE) || 7722
 const clipPort = await findFreePort(portBase)
@@ -281,14 +293,16 @@ if (!config.noNotify) {
 }
 
 // Banner
-console.log(BANNER)
-console.log(`  → Repo:      ${repoPath}`)
-console.log(`  → Volume:    ${volName}`)
-console.log(`  → Schwartz:  engaged (API key)`)
-console.log(`  → Clipboard: ${clipboardServer ? 'the Schwartz can see your clipboard' : 'disabled'}`)
-console.log(`  → Notify:    ${notifyServer ? 'the Schwartz will alert you when ready' : 'disabled'}`)
-console.log(`  → Firewall:  ${config.allowWeb ? 'jammed, but he can see the web (--web)' : 'jammed (just like their radar)'}`)
-console.log('')
+if (!config.json) {
+  console.log(BANNER)
+  console.log(`  → Repo:      ${repoPath}`)
+  console.log(`  → Volume:    ${volName}`)
+  console.log(`  → Schwartz:  engaged (API key)`)
+  console.log(`  → Clipboard: ${clipboardServer ? 'the Schwartz can see your clipboard' : 'disabled'}`)
+  console.log(`  → Notify:    ${notifyServer ? 'the Schwartz will alert you when ready' : 'disabled'}`)
+  console.log(`  → Firewall:  ${config.allowWeb ? 'jammed, but he can see the web (--web)' : 'jammed (just like their radar)'}`)
+  console.log('')
+}
 
 // Snapshot sessions for post-exit processing
 const mrcDir = resolve(repoPath, '.mrc')
@@ -340,6 +354,7 @@ const exitCode = await runContainer({
   volumes,
   claudeArgs,
   allowWeb: config.allowWeb,
+  json: config.json,
 })
 
 // --- Post-session processing ---
@@ -362,7 +377,7 @@ if (newFiles.length > 0) {
 
   // Tool-miss detection
   const misses = detectToolMisses(mrcDir, newUuid)
-  if (misses.size > 0) {
+  if (misses.size > 0 && !config.json) {
     let mrcRepoUrl = ''
     try {
       mrcRepoUrl = execFileSync('git', ['-C', SCRIPT_DIR, 'remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim().replace(/\.git$/, '')
