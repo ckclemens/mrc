@@ -42,7 +42,7 @@ mrc-notify-hook.sh   # container-side hook that sends notifications (Stop, Permi
 
 ## Prerequisites (macOS, from scratch)
 
-You need three things: Homebrew, Docker CLI tools, and Colima (a lightweight Docker runtime — no Docker Desktop, no GUI, no license fees).
+You need two things: Homebrew and OrbStack (a fast, self-managing Docker runtime for macOS — no Docker Desktop, no GUI wrangling, no license fees). OrbStack ships its own `docker` CLI and buildx plugin, so nothing else is needed for the container runtime itself.
 
 ### 1. Install Homebrew
 
@@ -59,29 +59,19 @@ echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 eval "$(/opt/homebrew/bin/brew shellenv)"
 ```
 
-### 2. Install Docker + Colima
+### 2. Install OrbStack + host tools
 
 ```bash
-brew install docker docker-buildx colima socat terminal-notifier
+brew install orbstack socat terminal-notifier
 ```
 
-This installs:
-- `docker` — the CLI client (no daemon, just the command)
-- `docker-buildx` — the build plugin (required for `docker build`)
-- `colima` — a lightweight Linux VM that runs the Docker daemon
+Then open OrbStack from Applications once so it can install its CLI tools and start the Docker daemon. You'll see a green "running" indicator in the menu bar when it's ready.
 
-### 3. Configure the buildx plugin
+- `orbstack` — the Docker runtime (also provides the `docker` CLI and buildx)
+- `socat` — used by the clipboard and notification proxies
+- `terminal-notifier` — used for desktop notifications on macOS
 
-Docker needs to know where Homebrew installed the buildx plugin:
-
-```bash
-mkdir -p ~/.docker
-echo '{"cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]}' > ~/.docker/config.json
-```
-
-> **Note:** If you already have a `~/.docker/config.json` with other settings, merge the `cliPluginsExtraDirs` key into it manually instead of overwriting the file.
-
-### [Optional] 4. Get an Anthropic API key
+### [Optional] 3. Get an Anthropic API key
 
 Go to [console.anthropic.com](https://console.anthropic.com/) and create an API key. A dedicated key for Mister Claude is recommended so you can revoke it independently.
 
@@ -124,7 +114,7 @@ mrc ~/projects/my-app -- --model claude-sonnet-4-5-20250929
 # Current directory
 mrc .
 
-# Verbose mode (shows Colima and Docker output)
+# Verbose mode (shows Docker output)
 mrc -v ~/projects/my-app
 ```
 
@@ -230,7 +220,7 @@ The next `mrc` run will rebuild the image with the new firewall rules.
 
 ## How it works
 
-1. `mrc` resolves the repo path, auto-starts Colima if needed, builds the Docker image, reads `.sandboxignore`, creates a per-repo config volume (`mrc-config-<hash>`), and starts the container with the repo bind-mounted at `/workspace`
+1. `mrc` resolves the repo path, verifies the Docker daemon is reachable via `docker info` (OrbStack manages the daemon automatically on macOS), builds the Docker image, reads `.sandboxignore`, creates a per-repo config volume (`mrc-config-<hash>`), and starts the container with the repo bind-mounted at `/workspace`
 2. The container runs as a non-root `coder` user with UID/GID matching your host user (no permission weirdness with bind-mounted files)
 3. `entrypoint.sh` waits for the network, then runs `init-firewall.sh` via passwordless sudo
 4. The firewall resolves each allowed domain to IPs, adds them to an `ipset`, sets the default iptables policy to DROP, and verifies that `example.com` is unreachable
@@ -262,12 +252,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM node:20-slim    # or node:18-slim, etc.
 ```
 
-**More resources for Colima:**
-
-```bash
-colima stop
-colima start --vm-type vz --mount-type virtiofs --cpu 6 --memory 16
-```
+**More resources for OrbStack** — open the OrbStack menu bar app → **Settings** → **System** and adjust the CPU and memory sliders. Changes apply on the next container start; no CLI flags needed.
 
 **Let him run free** (no firewall) — replace the ENTRYPOINT in the Dockerfile:
 
@@ -378,11 +363,11 @@ If nothing appears, check the settings above. If you see an error, make sure it'
 
 ## Troubleshooting
 
-**`docker: command not found`** — Run `brew install docker docker-buildx colima` and make sure Homebrew is on your PATH.
+**`docker: command not found`** — OrbStack provides the `docker` CLI. Make sure OrbStack is installed (`brew install orbstack`) and that you opened it at least once so it could wire up its CLI tools.
 
-**`Cannot connect to the Docker daemon`** — Colima isn't running. Start it with `colima start --vm-type vz --mount-type virtiofs --cpu 4 --memory 8`.
+**`Cannot connect to the Docker daemon`** — OrbStack isn't running. Open OrbStack from your Applications folder and wait for the green "running" indicator in the menu bar.
 
-**`ERROR: Network not ready after 30 attempts`** — The container couldn't resolve DNS. Try `colima stop && colima start --vm-type vz --mount-type virtiofs --cpu 4 --memory 8` to restart the VM.
+**`ERROR: Network not ready after 30 attempts`** — The container couldn't resolve DNS. Quit and relaunch OrbStack from the menu bar to restart the VM, then try `mrc` again.
 
 **`ERROR: Firewall verification failed`** — The iptables rules didn't take effect. Make sure the container has `--cap-add=NET_ADMIN --cap-add=NET_RAW` (this is handled by `mrc` automatically).
 
@@ -397,4 +382,4 @@ mrc ~/projects/my-app
 
 This pulls the latest Claude Code from npm and builds a fresh image.
 
-**Slow file access** — Make sure you started Colima with `--mount-type virtiofs`. If you started it without that flag, stop and restart with the full flags.
+**Slow file access** — OrbStack uses VirtioFS for bind mounts by default on Apple Silicon, so this is rarely an issue. If you're seeing genuine slowness, check OrbStack → Settings → File Sharing to confirm the repo's parent directory is on the shared list.

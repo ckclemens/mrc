@@ -54,28 +54,66 @@ done
 # Create ipset with CIDR support
 ipset create allowed-domains hash:net
 
-# Resolve and add allowed domains
-for domain in \
-    "registry.npmjs.org" \
-    "api.anthropic.com" \
-    "sentry.io" \
-    "statsig.anthropic.com" \
-    "statsig.com"; do
-    echo "Resolving $domain..."
+# Resolve and add allowed domains.
+#
+# Split into two tiers so security stays loud for critical infrastructure
+# while transient failures on optional telemetry endpoints don't kill the
+# container at startup.
+#
+#   CRITICAL — Claude Code is non-functional without these. A resolution
+#   failure here is treated as a hard error: better to fail loudly at
+#   startup than to launch a container where Claude Code can't talk to
+#   Anthropic and the user has to figure out why from the inside.
+#
+#   OPTIONAL — telemetry / analytics / feature-flag endpoints. Claude Code
+#   handles these failing gracefully on its own. A vendor retiring the
+#   endpoint (e.g. Anthropic sunsetting statsig.anthropic.com mid-2026)
+#   should not block container startup. We log a warning so the operator
+#   sees what happened, then continue.
+
+CRITICAL_DOMAINS=(
+    "api.anthropic.com"      # Claude API — Claude Code dies without this
+    "registry.npmjs.org"     # npm — needed for plugin install at build/runtime
+)
+
+OPTIONAL_DOMAINS=(
+    "sentry.io"              # Anthropic-side error reporting (non-essential)
+    "statsig.anthropic.com"  # Statsig feature flags (retired mid-2026; kept for older Claude Code builds)
+    "statsig.com"            # Direct Statsig endpoint
+)
+
+resolve_and_add() {
+    local domain="$1"
+    local tier="$2"  # "critical" or "optional"
+    echo "Resolving $domain ($tier)..."
+    local ips
     ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}')
     if [ -z "$ips" ]; then
-        echo "ERROR: Failed to resolve $domain"
-        exit 1
+        if [ "$tier" = "critical" ]; then
+            echo "ERROR: Failed to resolve critical domain $domain — Claude Code cannot function without it. Aborting."
+            return 1
+        else
+            echo "WARNING: Failed to resolve optional domain $domain — skipping. Container will start without this allowlist entry."
+            return 0
+        fi
     fi
-
     while read -r ip; do
         if [[ ! "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
             echo "ERROR: Invalid IP from DNS for $domain: $ip"
-            exit 1
+            return 1
         fi
         echo "Adding $ip for $domain"
         ipset add allowed-domains "$ip" -exist
     done < <(echo "$ips")
+    return 0
+}
+
+for domain in "${CRITICAL_DOMAINS[@]}"; do
+    resolve_and_add "$domain" "critical" || exit 1
+done
+
+for domain in "${OPTIONAL_DOMAINS[@]}"; do
+    resolve_and_add "$domain" "optional" || exit 1
 done
 
 # Get host IP from default route
@@ -98,7 +136,7 @@ for port in $CLIP_PORT $NOTIFY_PORT; do
 done
 
 # Allow traffic to host.docker.internal (may be outside the Docker bridge subnet,
-# e.g. Colima's VM host IP). Needed for clipboard and notification proxies.
+# e.g. OrbStack's or Colima's VM host IP). Needed for clipboard and notification proxies.
 HDINT_IP=$(getent hosts host.docker.internal 2>/dev/null | awk '{print $1}')
 if [ -n "$HDINT_IP" ] && [ "$HDINT_IP" != "$HOST_IP" ]; then
     echo "Allowing host.docker.internal ($HDINT_IP) on proxy ports only"

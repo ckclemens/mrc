@@ -48,7 +48,7 @@ if (help) {
 
 Options:
   -r, --rebuild        Force a full image rebuild (no cache)
-  -v, --verbose        Show Colima and Docker output
+  -v, --verbose        Show Docker output
   -n, --new [name]     Start a new conversation (optionally named)
   -w, --web            Allow outbound HTTPS to any host
   --no-summary         Skip AI session summary on exit
@@ -165,8 +165,8 @@ if (remaining[0] === 'sessions') {
 // --- Main launch flow ---
 const repoPath = resolve(remaining[0] || '.')
 
-// Ensure Docker / Colima
-const startedColima = await ensureDocker(config.verbose)
+// Ensure Docker daemon is reachable (OrbStack handles this on macOS)
+await ensureDocker(config.verbose)
 
 // Cleanup on exit
 let clipboardServer = null
@@ -175,10 +175,6 @@ let notifyServer = null
 function cleanup() {
   if (clipboardServer) { clipboardServer.close(); clipboardServer = null }
   if (notifyServer) { notifyServer.close(); notifyServer = null }
-  if (startedColima) {
-    console.log('\n🎩 Goodbye, Lone Starr.')
-    try { execFileSync('colima', ['stop'], { stdio: 'ignore' }) } catch {}
-  }
 }
 process.on('exit', cleanup)
 process.on('SIGINT', () => { cleanup(); process.exit(130) })

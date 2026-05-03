@@ -8,11 +8,15 @@ Mister Claude (`mrc`) is a sandboxed Docker container launcher for Claude Code w
 
 ## Architecture
 
+### Container runtime
+
+This fork targets **OrbStack** as the Docker runtime on macOS (faster on Apple Silicon, self-managing, no CLI start/stop). Upstream mrc was built around Colima and auto-started/stopped it; that logic has been replaced with a plain `docker info` reachability check. If you're running elsewhere (Docker Desktop, a remote `DOCKER_HOST`, Linux's native daemon), it still works as long as `docker info` succeeds before `mrc` runs. See `CLAUDE_CODE_ORBSTACK_SETUP.md` for the per-machine setup walkthrough.
+
 The system has eight components:
 
 ### Host-side (runs on macOS/Linux)
 
-1. **`mrc`** (bash) — Host-side launcher. Loads config from `~/.mrcrc` (global) and `<repo>/.mrcrc` (per-repo), parses flags and subcommands (`status`, `sessions`), starts Colima if needed, builds the Docker image with the user's UID/GID, discovers `.sandboxignore` files recursively throughout the repo tree, starts clipboard and notification proxies on dynamically allocated ports, creates a per-repo config volume (`mrc-config-<hash>`), and runs the container with the repo bind-mounted at `/workspace`. Detects concurrent instances against the same repo and assigns separate config volumes. Labels each container with `mrc.*` metadata for `mrc status` queries. On exit, detects new sessions, reports missing tools, and generates AI summaries.
+1. **`mrc`** (bash) — Host-side launcher. Loads config from `~/.mrcrc` (global) and `<repo>/.mrcrc` (per-repo), parses flags and subcommands (`status`, `sessions`), verifies the Docker daemon is reachable via `docker info` (OrbStack is the expected runtime on macOS and manages the daemon automatically; the launcher prints an "open OrbStack" hint if the daemon is down), builds the Docker image with the user's UID/GID, discovers `.sandboxignore` files recursively throughout the repo tree, starts clipboard and notification proxies on dynamically allocated ports, creates a per-repo config volume (`mrc-config-<hash>`), and runs the container with the repo bind-mounted at `/workspace`. Detects concurrent instances against the same repo and assigns separate config volumes. Labels each container with `mrc.*` metadata for `mrc status` queries. On exit, detects new sessions, reports missing tools, and generates AI summaries.
 
 2. **`clipboard-proxy.sh`** (bash) — Host-side TCP proxy. Serves clipboard content (text and images) to the container via socat. The container reaches it through `host.docker.internal`. Port is dynamically allocated starting from `MRC_PORT_BASE` (default 7722).
 
@@ -54,7 +58,7 @@ mrc [options] [path-to-repo] [-- claude-code-args...]
 
 Options:
   -r, --rebuild        Force a full image rebuild (no cache)
-  -v, --verbose        Show Colima and Docker output
+  -v, --verbose        Show Docker output
   -n, --new [name]     Start a new conversation (optionally named)
   -w, --web            Allow outbound HTTPS to any host
   --no-summary         Skip AI session summary on exit
@@ -100,6 +104,6 @@ Changes to `mrc`, `clipboard-proxy.sh`, and `notify-proxy.sh` take effect immedi
 
 - All bash scripts use `set -euo pipefail`
 - User-facing output uses Spaceballs-themed messaging
-- The launcher script handles macOS/Colima-specific concerns (auto-starting VM, DOCKER_HOST socket)
+- The launcher script assumes OrbStack is the Docker runtime on macOS; it does not auto-start a VM or set `DOCKER_HOST`. If the daemon isn't reachable it tells the user to open OrbStack from Applications and exits.
 - Host-container communication uses TCP proxies via socat + `host.docker.internal`
 - Proxy ports are dynamically allocated, not hardcoded

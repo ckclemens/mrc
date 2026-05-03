@@ -2,7 +2,7 @@
 set -euo pipefail
 trap 'echo "FAILED at line $LINENO (exit code $?)" >&2' ERR
 
-# Wait for network to be ready (Colima can be slow to warm up)
+# Wait for network to be ready (the Docker VM / firewall can take a moment to settle)
 echo "Waiting for network..."
 for i in $(seq 1 30); do
   if dig +short +timeout=1 api.anthropic.com >/dev/null 2>&1; then
